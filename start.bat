@@ -6,8 +6,12 @@ echo.
 
 cd /d "%~dp0"
 
+REM --- Port settings (change if port conflicts) ---
+set BACKEND_PORT=8002
+set FRONTEND_PORT=5173
+
 REM --- Pre-flight checks ---
-if not exist "backend\venv" (
+if not exist "backend\venv\Scripts\python.exe" (
     echo [ERROR] Backend venv not found.
     echo         Run setup.bat first.
     pause
@@ -22,31 +26,31 @@ if not exist "frontend\node_modules" (
 )
 
 REM --- Start backend (new window) ---
-echo [1/2] Starting backend... (http://localhost:8000)
-start "NexusText-Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && echo. && echo === NexusText AI Backend === && echo http://localhost:8000 && echo API Docs: http://localhost:8000/docs && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+echo [1/2] Starting backend... (http://localhost:%BACKEND_PORT%)
+start "NexusText-Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && echo. && echo === NexusText AI Backend === && echo http://localhost:%BACKEND_PORT% && echo API Docs: http://localhost:%BACKEND_PORT%/docs && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port %BACKEND_PORT%"
 
 REM --- Wait for backend ---
-timeout /t 2 /nobreak >nul
+timeout /t 3 /nobreak >nul
 
 REM --- Start frontend (new window) ---
-echo [2/2] Starting frontend... (http://localhost:5173)
-start "NexusText-Frontend" cmd /k "cd /d %~dp0frontend && echo. && echo === NexusText AI Frontend === && echo http://localhost:5173 && echo. && npm run dev"
+echo [2/2] Starting frontend... (http://localhost:%FRONTEND_PORT%)
+start "NexusText-Frontend" cmd /k "cd /d %~dp0frontend && echo. && echo === NexusText AI Frontend === && echo http://localhost:%FRONTEND_PORT% && echo. && npm run dev -- --port %FRONTEND_PORT%"
 
 echo.
 echo ========================================
 echo  Started!
 echo ========================================
 echo.
-echo  Backend:  http://localhost:8000
-echo  API Docs: http://localhost:8000/docs
-echo  Frontend: http://localhost:5173
+echo  Backend:  http://localhost:%BACKEND_PORT%
+echo  API Docs: http://localhost:%BACKEND_PORT%/docs
+echo  Frontend: http://localhost:%FRONTEND_PORT%
 echo.
 echo  Stop: close both server windows, or run stop.bat
 echo.
 
-REM --- Open browser after 3 seconds ---
-timeout /t 3 /nobreak >nul
+REM --- Open browser after 5 seconds ---
+timeout /t 5 /nobreak >nul
 echo Opening browser...
-start http://localhost:5173
+start http://localhost:%FRONTEND_PORT%
 
 pause

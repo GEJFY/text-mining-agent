@@ -23,6 +23,7 @@ if %ERRORLEVEL% NEQ 0 (
     echo.
     echo [ERROR] Docker Compose failed.
     echo         Make sure Docker Desktop is running.
+    echo         If port conflict, edit .env to change port numbers.
     pause
     exit /b 1
 )
@@ -32,16 +33,16 @@ echo ========================================
 echo  Docker Started!
 echo ========================================
 echo.
-echo  Backend:    http://localhost:8000
-echo  API Docs:   http://localhost:8000/docs
-echo  Frontend:   http://localhost:3000
-echo  PostgreSQL: localhost:5432
-echo  Redis:      localhost:6379
+echo  Backend:    http://localhost:8002
+echo  API Docs:   http://localhost:8002/docs
+echo  Frontend:   http://localhost:3002
+echo  PostgreSQL: localhost:15432
+echo  Redis:      localhost:16379
 echo.
 echo  To stop: docker compose down
 echo.
 
 timeout /t 3 /nobreak >nul
-start http://localhost:3000
+start http://localhost:3002
 
 pause

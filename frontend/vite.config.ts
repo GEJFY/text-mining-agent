@@ -15,12 +15,12 @@ export default defineConfig({
     // バックエンドAPIへのプロキシ設定
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        target: "http://localhost:8002",
         changeOrigin: true,
         secure: false,
       },
       "/ws": {
-        target: "ws://localhost:8000",
+        target: "ws://localhost:8002",
         ws: true,
       },
     },

@@ -1,0 +1,143 @@
+# =============================================================================
+# NexusText AI v7.0 - Docker Compose (ローカル開発環境)
+# =============================================================================
+# 使用方法:
+#   開発環境起動: docker compose up -d
+#   ログ確認:     docker compose logs -f backend
+#   停止:         docker compose down
+#   全削除:       docker compose down -v
+# =============================================================================
+
+services:
+  # ---------------------------------------------------------------------------
+  # Backend - FastAPI アプリケーション
+  # ---------------------------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: nexustext-backend
+    ports:
+      - "${NEXUSTEXT_BACKEND_PORT:-8000}:8000"
+    env_file:
+      - .env
+    environment:
+      - NEXUSTEXT_DATABASE_URL=postgresql+asyncpg://nexustext:nexustext@postgres:5432/nexustext
+      - NEXUSTEXT_REDIS_URL=redis://redis:6379/0
+      - NEXUSTEXT_DEBUG=true
+      - NEXUSTEXT_LOG_LEVEL=DEBUG
+    volumes:
+      - ./backend:/app
+      - backend-cache:/app/cache
+      - backend-data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 40s
+    networks:
+      - nexustext-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Frontend - React (Vite 開発サーバー)
+  # ---------------------------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nexustext-frontend
+    ports:
+      - "${NEXUSTEXT_FRONTEND_PORT:-3000}:80"
+    environment:
+      - VITE_API_BASE_URL=http://localhost:${NEXUSTEXT_BACKEND_PORT:-8000}/api/v1
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/nginx-health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - nexustext-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 16 - プライマリデータベース
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: nexustext-postgres
+    ports:
+      - "${NEXUSTEXT_DB_PORT:-5432}:5432"
+    environment:
+      POSTGRES_USER: nexustext
+      POSTGRES_PASSWORD: nexustext
+      POSTGRES_DB: nexustext
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nexustext -d nexustext"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    networks:
+      - nexustext-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redis 7 - キャッシュ・セッション・タスクキュー
+  # ---------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: nexustext-redis
+    ports:
+      - "${NEXUSTEXT_REDIS_PORT:-6379}:6379"
+    command: >
+      redis-server
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --appendonly yes
+      --appendfsync everysec
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - nexustext-network
+    restart: unless-stopped
+
+# =============================================================================
+# Volumes - 永続化データ
+# =============================================================================
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  backend-cache:
+    driver: local
+  backend-data:
+    driver: local
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  nexustext-network:
+    name: nexustext-network
+    driver: bridge

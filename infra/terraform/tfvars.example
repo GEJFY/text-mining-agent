@@ -1,0 +1,22 @@
+# AWS
+# aws_region       = "ap-northeast-1"
+# cluster_name     = "nexustext-eks"
+# node_count       = 3
+# instance_type    = "t3.xlarge"
+# environment      = "production"
+
+# Azure
+# location         = "japaneast"
+# resource_group   = "nexustext-rg"
+# cluster_name     = "nexustext-aks"
+# node_count       = 3
+# vm_size          = "Standard_D4s_v3"
+# environment      = "production"
+
+# GCP
+# project_id       = "your-gcp-project-id"
+# region           = "asia-northeast1"
+# cluster_name     = "nexustext-gke"
+# node_count       = 3
+# machine_type     = "e2-standard-4"
+# environment      = "production"

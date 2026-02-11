@@ -1,55 +1,52 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
-echo  NexusText AI v7.0 - 起動
+echo  NexusText AI v7.0 - Start
 echo ========================================
 echo.
 
-REM --- プロジェクトルートに移動 ---
 cd /d "%~dp0"
 
-REM --- 事前チェック ---
+REM --- Pre-flight checks ---
 if not exist "backend\venv" (
-    echo [エラー] バックエンドの仮想環境が見つかりません。
-    echo         先に setup.bat を実行してください。
+    echo [ERROR] Backend venv not found.
+    echo         Run setup.bat first.
     pause
     exit /b 1
 )
 
 if not exist "frontend\node_modules" (
-    echo [エラー] フロントエンドの依存パッケージが見つかりません。
-    echo         先に setup.bat を実行してください。
+    echo [ERROR] Frontend node_modules not found.
+    echo         Run setup.bat first.
     pause
     exit /b 1
 )
 
-REM --- バックエンド起動（別ウィンドウ） ---
-echo [1/2] バックエンドを起動しています... (http://localhost:8000)
-start "NexusText AI - Backend" cmd /k "cd /d "%~dp0backend" && call venv\Scripts\activate.bat && echo. && echo ====================================== && echo  NexusText AI - Backend Server && echo  http://localhost:8000 && echo  API Docs: http://localhost:8000/docs && echo ====================================== && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
+REM --- Start backend (new window) ---
+echo [1/2] Starting backend... (http://localhost:8000)
+start "NexusText-Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && echo. && echo === NexusText AI Backend === && echo http://localhost:8000 && echo API Docs: http://localhost:8000/docs && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"
 
-REM --- 2秒待機（バックエンド起動待ち） ---
+REM --- Wait for backend ---
 timeout /t 2 /nobreak >nul
 
-REM --- フロントエンド起動（別ウィンドウ） ---
-echo [2/2] フロントエンドを起動しています... (http://localhost:5173)
-start "NexusText AI - Frontend" cmd /k "cd /d "%~dp0frontend" && echo. && echo ====================================== && echo  NexusText AI - Frontend Dev Server && echo  http://localhost:5173 && echo ====================================== && echo. && npm run dev"
+REM --- Start frontend (new window) ---
+echo [2/2] Starting frontend... (http://localhost:5173)
+start "NexusText-Frontend" cmd /k "cd /d %~dp0frontend && echo. && echo === NexusText AI Frontend === && echo http://localhost:5173 && echo. && npm run dev"
 
 echo.
 echo ========================================
-echo  起動完了！
+echo  Started!
 echo ========================================
 echo.
-echo  バックエンド:  http://localhost:8000
-echo  API ドキュメント: http://localhost:8000/docs
-echo  フロントエンド: http://localhost:5173
+echo  Backend:  http://localhost:8000
+echo  API Docs: http://localhost:8000/docs
+echo  Frontend: http://localhost:5173
 echo.
-echo  ※ 各サーバーは別ウィンドウで起動しています。
-echo  ※ 停止するには各ウィンドウで Ctrl+C を押してください。
+echo  Stop: close both server windows, or run stop.bat
 echo.
 
-REM --- 3秒後にブラウザを開く ---
+REM --- Open browser after 3 seconds ---
 timeout /t 3 /nobreak >nul
-echo ブラウザを開いています...
+echo Opening browser...
 start http://localhost:5173
 
 pause

@@ -1,69 +1,74 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
-echo  NexusText AI v7.0 - 初期セットアップ
+echo  NexusText AI v7.0 - Initial Setup
 echo ========================================
 echo.
 
-REM --- プロジェクトルートに移動 ---
 cd /d "%~dp0"
 
-REM --- .env ファイルの作成 ---
+REM --- Create .env file ---
 if not exist ".env" (
-    echo [1/4] .env ファイルを作成しています...
+    echo [1/4] Creating .env file...
     copy .env.example .env >nul
-    echo       .env.example を .env にコピーしました。
-    echo       必要に応じて .env を編集してください（LLM APIキー等）。
+    echo       Copied .env.example to .env
+    echo       Edit .env to set your LLM API keys.
 ) else (
-    echo [1/4] .env ファイルは既に存在します。スキップ。
+    echo [1/4] .env already exists. Skipping.
 )
 echo.
 
-REM --- バックエンドのセットアップ ---
-echo [2/4] バックエンド仮想環境を作成しています...
+REM --- Backend setup ---
+echo [2/4] Creating backend virtual environment...
 cd backend
 if not exist "venv" (
     python -m venv venv
-    echo       venv を作成しました。
+    if %ERRORLEVEL% NEQ 0 (
+        echo       [ERROR] Failed to create venv.
+        echo       Make sure Python 3.11 is installed and on PATH.
+        pause
+        exit /b 1
+    )
+    echo       Created venv.
 ) else (
-    echo       venv は既に存在します。スキップ。
+    echo       venv already exists. Skipping.
 )
 
-echo [3/4] バックエンド依存パッケージをインストールしています...
-echo       （初回は数分かかる場合があります）
+echo [3/4] Installing backend dependencies...
+echo       (This may take a few minutes on first run)
 call venv\Scripts\activate.bat
-pip install -e ".[dev]" --quiet 2>nul
+pip install -e ".[dev]" --quiet
 if %ERRORLEVEL% NEQ 0 (
-    echo       [警告] pip install でエラーが発生しました。
-    echo       Python 3.11 がインストールされているか確認してください。
+    echo       [ERROR] pip install failed.
+    echo       Make sure Python 3.11 is installed.
+    call deactivate
     pause
     exit /b 1
 )
 call deactivate
 cd ..
-echo       バックエンドのセットアップ完了。
+echo       Backend setup complete.
 echo.
 
-REM --- フロントエンドのセットアップ ---
-echo [4/4] フロントエンド依存パッケージをインストールしています...
+REM --- Frontend setup ---
+echo [4/4] Installing frontend dependencies...
 cd frontend
-call npm install --no-audit --no-fund --silent 2>nul
+call npm install --no-audit --no-fund
 if %ERRORLEVEL% NEQ 0 (
-    echo       [警告] npm install でエラーが発生しました。
-    echo       Node.js 20 がインストールされているか確認してください。
+    echo       [ERROR] npm install failed.
+    echo       Make sure Node.js 20 is installed.
     pause
     exit /b 1
 )
 cd ..
-echo       フロントエンドのセットアップ完了。
+echo       Frontend setup complete.
 echo.
 
 echo ========================================
-echo  セットアップ完了！
+echo  Setup Complete!
 echo ========================================
 echo.
-echo  次のステップ:
-echo    1. .env ファイルを編集（LLM APIキーを設定）
-echo    2. start.bat を実行してアプリを起動
+echo  Next steps:
+echo    1. Edit .env file (set LLM API keys)
+echo    2. Run start.bat to launch the app
 echo.
 pause

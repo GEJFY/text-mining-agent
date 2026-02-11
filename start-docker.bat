@@ -1,47 +1,44 @@
 @echo off
-chcp 65001 >nul
 echo ========================================
-echo  NexusText AI v7.0 - Docker起動
+echo  NexusText AI v7.0 - Docker Start
 echo ========================================
 echo.
 
 cd /d "%~dp0"
 
-REM --- .env チェック ---
 if not exist ".env" (
-    echo [準備] .env ファイルを作成しています...
+    echo Creating .env file...
     copy .env.example .env >nul
-    echo       .env を作成しました。必要に応じて編集してください。
+    echo Done. Edit .env if needed.
     echo.
 )
 
-REM --- Docker Compose 起動 ---
-echo Docker Compose でサービスを起動しています...
-echo （初回はイメージのビルドに数分かかります）
+echo Starting Docker Compose...
+echo (First run may take several minutes to build images)
 echo.
 
 docker compose up -d --build
 
 if %ERRORLEVEL% NEQ 0 (
     echo.
-    echo [エラー] Docker Compose の起動に失敗しました。
-    echo         Docker Desktop が起動しているか確認してください。
+    echo [ERROR] Docker Compose failed.
+    echo         Make sure Docker Desktop is running.
     pause
     exit /b 1
 )
 
 echo.
 echo ========================================
-echo  Docker起動完了！
+echo  Docker Started!
 echo ========================================
 echo.
-echo  バックエンド:    http://localhost:8000
-echo  API ドキュメント:  http://localhost:8000/docs
-echo  フロントエンド:  http://localhost:3000
-echo  PostgreSQL:      localhost:5432
-echo  Redis:           localhost:6379
+echo  Backend:    http://localhost:8000
+echo  API Docs:   http://localhost:8000/docs
+echo  Frontend:   http://localhost:3000
+echo  PostgreSQL: localhost:5432
+echo  Redis:      localhost:6379
 echo.
-echo  停止: docker compose down
+echo  To stop: docker compose down
 echo.
 
 timeout /t 3 /nobreak >nul

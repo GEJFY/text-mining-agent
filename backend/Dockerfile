@@ -28,6 +28,13 @@ COPY pyproject.toml ./
 # 依存関係のインストール（プロダクション用のみ）
 RUN pip install --no-cache-dir --prefix=/install .
 
+# packaging はベースイメージに既存のため --prefix では "already satisfied" でスキップされる。
+# transformers が必要とするため、コードと dist-info を両方コピーする。
+RUN cp -r /usr/local/lib/python3.11/site-packages/packaging \
+          /install/lib/python3.11/site-packages/packaging && \
+    cp -r /usr/local/lib/python3.11/site-packages/packaging-*.dist-info \
+          /install/lib/python3.11/site-packages/
+
 # ---------------------------------------------------------------------------
 # Stage 2: Runtime - 本番用軽量イメージ
 # ---------------------------------------------------------------------------
@@ -77,8 +84,6 @@ EXPOSE ${PORT}
 CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "4", \
-     "--loop", "uvloop", \
-     "--http", "httptools", \
+     "--workers", "2", \
      "--access-log", \
      "--log-level", "info"]

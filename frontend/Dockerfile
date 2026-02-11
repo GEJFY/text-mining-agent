@@ -13,8 +13,8 @@ WORKDIR /build
 # パッケージマニフェストを先にコピーしてキャッシュ効率を上げる
 COPY package.json package-lock.json* ./
 
-# 依存関係のクリーンインストール
-RUN npm ci --no-audit --no-fund
+# 依存関係のインストール
+RUN npm install --no-audit --no-fund
 
 # ソースコードのコピー
 COPY . .
@@ -35,69 +35,47 @@ LABEL maintainer="NexusText AI Team"
 LABEL version="7.0.0"
 LABEL description="NexusText AI Frontend - React SPA"
 
-# デフォルトnginx設定を削除
-RUN rm /etc/nginx/conf.d/default.conf
-
-# カスタムnginx設定
-COPY --from=builder /build/nginx.conf /etc/nginx/conf.d/default.conf 2>/dev/null || true
-
-# nginx設定がない場合のデフォルト設定を生成
-RUN if [ ! -f /etc/nginx/conf.d/default.conf ]; then \
-    cat > /etc/nginx/conf.d/default.conf << 'NGINX_CONF'
-server {
-    listen 80;
-    listen [::]:80;
-    server_name _;
-
-    root /usr/share/nginx/html;
-    index index.html;
-
-    # gzip圧縮
-    gzip on;
-    gzip_vary on;
-    gzip_proxied any;
-    gzip_comp_level 6;
-    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;
-
-    # セキュリティヘッダー
-    add_header X-Frame-Options "SAMEORIGIN" always;
-    add_header X-Content-Type-Options "nosniff" always;
-    add_header X-XSS-Protection "1; mode=block" always;
-    add_header Referrer-Policy "strict-origin-when-cross-origin" always;
-    add_header Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' http://localhost:* https://*;" always;
-
-    # 静的アセットのキャッシュ
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
-        expires 1y;
-        add_header Cache-Control "public, immutable";
-        access_log off;
-    }
-
-    # API プロキシ（バックエンドへのリバースプロキシ）
-    location /api/ {
-        proxy_pass http://backend:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_read_timeout 300s;
-        proxy_connect_timeout 75s;
-    }
-
-    # SPA フォールバック - 全ルートをindex.htmlに
-    location / {
-        try_files $uri $uri/ /index.html;
-    }
-
-    # ヘルスチェック
-    location /nginx-health {
-        access_log off;
-        return 200 "healthy\n";
-        add_header Content-Type text/plain;
-    }
-}
-NGINX_CONF
-fi
+# デフォルトnginx設定を削除して、カスタム設定を生成
+RUN rm /etc/nginx/conf.d/default.conf && \
+    printf '%s\n' \
+    'server {' \
+    '    listen 80;' \
+    '    listen [::]:80;' \
+    '    server_name _;' \
+    '    root /usr/share/nginx/html;' \
+    '    index index.html;' \
+    '    gzip on;' \
+    '    gzip_vary on;' \
+    '    gzip_proxied any;' \
+    '    gzip_comp_level 6;' \
+    '    gzip_types text/plain text/css application/json application/javascript text/xml application/xml text/javascript image/svg+xml;' \
+    '    add_header X-Frame-Options "SAMEORIGIN" always;' \
+    '    add_header X-Content-Type-Options "nosniff" always;' \
+    '    add_header X-XSS-Protection "1; mode=block" always;' \
+    '    add_header Referrer-Policy "strict-origin-when-cross-origin" always;' \
+    '    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {' \
+    '        expires 1y;' \
+    '        add_header Cache-Control "public, immutable";' \
+    '        access_log off;' \
+    '    }' \
+    '    location /api/ {' \
+    '        proxy_pass http://backend:8000;' \
+    '        proxy_set_header Host $host;' \
+    '        proxy_set_header X-Real-IP $remote_addr;' \
+    '        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;' \
+    '        proxy_set_header X-Forwarded-Proto $scheme;' \
+    '        proxy_read_timeout 300s;' \
+    '        proxy_connect_timeout 75s;' \
+    '    }' \
+    '    location / {' \
+    '        try_files $uri $uri/ /index.html;' \
+    '    }' \
+    '    location /nginx-health {' \
+    '        access_log off;' \
+    '        return 200 "healthy\\n";' \
+    '        add_header Content-Type text/plain;' \
+    '    }' \
+    '}' > /etc/nginx/conf.d/default.conf
 
 # ビルド成果物をnginxの配信ディレクトリにコピー
 COPY --from=builder /build/dist /usr/share/nginx/html

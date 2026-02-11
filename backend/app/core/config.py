@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dimension: int = 384
 
+    # Docker Compose ポート設定
+    backend_port: int = 8000
+    frontend_port: int = 3000
+    db_port: int = 5432
+    redis_port: int = 6379
+
     model_config = {"env_file": ".env", "env_prefix": "NEXUSTEXT_", "case_sensitive": False}
 
 

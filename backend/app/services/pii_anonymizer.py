@@ -4,8 +4,8 @@
 可逆マッピングにより権限保持者はレポート生成時に復元可能。
 """
 
-import re
 import hashlib
+import re
 from dataclasses import dataclass, field
 
 from app.core.logging import get_logger
@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 @dataclass
 class PIIMapping:
     """匿名化マッピング（可逆）"""
+
     original: str
     anonymized: str
     entity_type: str
@@ -24,6 +25,7 @@ class PIIMapping:
 @dataclass
 class PIIAnonymizer:
     """PII匿名化エンジン"""
+
     mappings: dict[str, PIIMapping] = field(default_factory=dict)
     _counter: int = 0
 

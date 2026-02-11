@@ -97,9 +97,7 @@ class SentimentService:
             batch_texts = texts[i : i + batch_size]
             batch_ids = record_ids[i : i + batch_size]
 
-            batch_results = await self._analyze_batch(
-                batch_texts, batch_ids, axes, request.multi_label
-            )
+            batch_results = await self._analyze_batch(batch_texts, batch_ids, axes, request.multi_label)
             results.extend(batch_results)
 
         # 分布集計
@@ -132,12 +130,12 @@ class SentimentService:
         """バッチ単位での感情分析"""
         axis_desc = "\n".join(f"- {a.name}: {a.description}" for a in axes)
         multi_label_instruction = (
-            "1テキストに複数のラベルを付与可能です。" if multi_label else "各テキストに最も適切な1つのラベルを付与してください。"
+            "1テキストに複数のラベルを付与可能です。"
+            if multi_label
+            else "各テキストに最も適切な1つのラベルを付与してください。"
         )
 
-        texts_section = "\n".join(
-            f"[{rid}] {text[:500]}" for rid, text in zip(record_ids, texts)
-        )
+        texts_section = "\n".join(f"[{rid}] {text[:500]}" for rid, text in zip(record_ids, texts))
 
         prompt = f"""以下のテキストを分類してください。
 
@@ -152,7 +150,8 @@ class SentimentService:
 {texts_section}
 
 JSON配列で出力:
-[{{"id": "...", "labels": [...], "scores": {{"軸名": 0.8}}, "evidence": [{{"label": "...", "highlight": "根拠テキスト"}}]}}]"""
+[{{"id": "...", "labels": [...], "scores": {{"軸名": 0.8}},
+  "evidence": [{{"label": "...", "highlight": "根拠テキスト"}}]}}]"""
 
         try:
             response = await self.llm.invoke(
@@ -165,30 +164,29 @@ JSON配列で出力:
 
             results = []
             for item in data:
-                results.append(SentimentResultItem(
-                    record_id=str(item.get("id", "")),
-                    labels=item.get("labels", []),
-                    scores=item.get("scores", {}),
-                    evidence_highlights=item.get("evidence", []),
-                ))
+                results.append(
+                    SentimentResultItem(
+                        record_id=str(item.get("id", "")),
+                        labels=item.get("labels", []),
+                        scores=item.get("scores", {}),
+                        evidence_highlights=item.get("evidence", []),
+                    )
+                )
             return results
 
         except Exception as e:
             logger.warning("sentiment_batch_failed", error=str(e))
-            return [
-                SentimentResultItem(record_id=rid, labels=["error"], scores={})
-                for rid in record_ids
-            ]
+            return [SentimentResultItem(record_id=rid, labels=["error"], scores={}) for rid in record_ids]
 
-    def _build_time_series(
-        self, results: list[SentimentResultItem], dates: list[str]
-    ) -> list[dict]:
+    def _build_time_series(self, results: list[SentimentResultItem], dates: list[str]) -> list[dict]:
         """時系列データの構築"""
-        df = pd.DataFrame({
-            "date": pd.to_datetime(dates, errors="coerce"),
-            "labels": [r.labels for r in results],
-            "scores": [r.scores for r in results],
-        })
+        df = pd.DataFrame(
+            {
+                "date": pd.to_datetime(dates, errors="coerce"),
+                "labels": [r.labels for r in results],
+                "scores": [r.scores for r in results],
+            }
+        )
         df = df.dropna(subset=["date"])
 
         if df.empty:
@@ -203,11 +201,13 @@ JSON配列で出力:
                 for label in label_list:
                     all_labels[label] = all_labels.get(label, 0) + 1
 
-            time_data.append({
-                "period": str(period),
-                "count": len(group),
-                "distribution": all_labels,
-            })
+            time_data.append(
+                {
+                    "period": str(period),
+                    "count": len(group),
+                    "distribution": all_labels,
+                }
+            )
 
         return time_data
 
@@ -232,11 +232,13 @@ JSON配列で出力:
             actual_idx = i + window - 1
             deviation = abs(arr[actual_idx] - sma[i])
             if deviation > threshold * np.std(arr):
-                spikes.append({
-                    "period": time_series[actual_idx]["period"],
-                    "actual": int(arr[actual_idx]),
-                    "sma": float(sma[i]),
-                    "deviation": float(deviation),
-                })
+                spikes.append(
+                    {
+                        "period": time_series[actual_idx]["period"],
+                        "actual": int(arr[actual_idx]),
+                        "sma": float(sma[i]),
+                        "deviation": float(deviation),
+                    }
+                )
 
         return spikes

@@ -123,9 +123,7 @@ class TestDataImportEndpoint:
                 "file": ("test.csv", io.BytesIO(csv_content.encode("shift_jis")), "text/csv"),
             }
             data_fields = {"encoding": "shift_jis"}
-            response = await client.post(
-                "/api/v1/data/import", files=files, data=data_fields
-            )
+            response = await client.post("/api/v1/data/import", files=files, data=data_fields)
 
         assert response.status_code == 200
         data = response.json()
@@ -157,14 +155,15 @@ class TestDataImportEndpoint:
                 ),
             }
             import json
-            mappings = json.dumps([
-                {"column_name": "content", "role": "text"},
-                {"column_name": "date", "role": "date"},
-            ])
-            data_fields = {"column_mappings": mappings}
-            response = await client.post(
-                "/api/v1/data/import", files=files, data=data_fields
+
+            mappings = json.dumps(
+                [
+                    {"column_name": "content", "role": "text"},
+                    {"column_name": "date", "role": "date"},
+                ]
             )
+            data_fields = {"column_mappings": mappings}
+            response = await client.post("/api/v1/data/import", files=files, data=data_fields)
 
         assert response.status_code == 200
         data = response.json()

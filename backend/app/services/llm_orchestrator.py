@@ -5,11 +5,11 @@
 """
 
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from enum import Enum
-from datetime import datetime, timezone
 
-from app.core.config import settings
 from app.core.cloud_provider import get_api_gateway
+from app.core.config import settings
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -17,14 +17,15 @@ logger = get_logger(__name__)
 
 class TaskType(str, Enum):
     """タスク種別によるモデル選択"""
-    LABELING = "labeling"          # クラスターラベリング・要約 → Opus
+
+    LABELING = "labeling"  # クラスターラベリング・要約 → Opus
     SUMMARIZATION = "summarization"  # レポート生成・要約 → Opus
     BATCH_CLASSIFICATION = "batch_classification"  # 感情分析バッチ → Sonnet
     PII_DETECTION = "pii_detection"  # PII検知 → mini
-    TRANSLATION = "translation"      # 多言語翻訳 → GPT-5.2
-    VISION = "vision"               # 画像読取 → Gemini
-    CONFIDENTIAL = "confidential"    # 機密データ → Llama (ローカル)
-    CHAT = "chat"                   # 対話応答 → Sonnet
+    TRANSLATION = "translation"  # 多言語翻訳 → GPT-5.2
+    VISION = "vision"  # 画像読取 → Gemini
+    CONFIDENTIAL = "confidential"  # 機密データ → Llama (ローカル)
+    CHAT = "chat"  # 対話応答 → Sonnet
 
 
 class DataSensitivity(str, Enum):
@@ -37,6 +38,7 @@ class DataSensitivity(str, Enum):
 @dataclass
 class CircuitBreaker:
     """サーキットブレーカーによる障害時自動切替"""
+
     failure_count: int = 0
     failure_threshold: int = 3
     last_failure: datetime | None = None
@@ -44,7 +46,7 @@ class CircuitBreaker:
 
     def record_failure(self) -> None:
         self.failure_count += 1
-        self.last_failure = datetime.now(timezone.utc)
+        self.last_failure = datetime.now(UTC)
         if self.failure_count >= self.failure_threshold:
             self.is_open = True
             logger.warning("circuit_breaker_open", failures=self.failure_count)
@@ -58,7 +60,7 @@ class CircuitBreaker:
             return True
         # 60秒後にhalf-openで再試行
         if self.last_failure:
-            elapsed = (datetime.now(timezone.utc) - self.last_failure).total_seconds()
+            elapsed = (datetime.now(UTC) - self.last_failure).total_seconds()
             if elapsed > 60:
                 return True
         return False
@@ -67,21 +69,22 @@ class CircuitBreaker:
 @dataclass
 class LLMOrchestrator:
     """マルチLLMオーケストレーター"""
+
     circuit_breakers: dict[str, CircuitBreaker] = field(default_factory=dict)
 
     # タスク種別→優先モデルのマッピング
-    TASK_MODEL_MAP: dict[TaskType, list[str]] = field(default_factory=lambda: {
-        TaskType.LABELING: ["claude-opus-4-6", "gpt-5.2", "gemini-3.0-pro"],
-        TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.2"],
-        TaskType.BATCH_CLASSIFICATION: [
-            "claude-sonnet-4-5-20250929", "gpt-5-mini", "gemini-3.0-flash"
-        ],
-        TaskType.PII_DETECTION: ["gpt-5-mini", "claude-sonnet-4-5-20250929"],
-        TaskType.TRANSLATION: ["gpt-5.2", "claude-opus-4-6", "gemini-3.0-pro"],
-        TaskType.VISION: ["gemini-3.0-pro", "gpt-5.2", "claude-opus-4-6"],
-        TaskType.CONFIDENTIAL: ["llama-4-405b"],
-        TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-mini"],
-    })
+    TASK_MODEL_MAP: dict[TaskType, list[str]] = field(
+        default_factory=lambda: {
+            TaskType.LABELING: ["claude-opus-4-6", "gpt-5.2", "gemini-3.0-pro"],
+            TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.2"],
+            TaskType.BATCH_CLASSIFICATION: ["claude-sonnet-4-5-20250929", "gpt-5-mini", "gemini-3.0-flash"],
+            TaskType.PII_DETECTION: ["gpt-5-mini", "claude-sonnet-4-5-20250929"],
+            TaskType.TRANSLATION: ["gpt-5.2", "claude-opus-4-6", "gemini-3.0-pro"],
+            TaskType.VISION: ["gemini-3.0-pro", "gpt-5.2", "claude-opus-4-6"],
+            TaskType.CONFIDENTIAL: ["llama-4-405b"],
+            TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-mini"],
+        }
+    )
 
     def select_model(
         self,
@@ -141,9 +144,7 @@ class LLMOrchestrator:
                 return await self._call_model(fallback, prompt, system_prompt, max_tokens)
             raise
 
-    async def _call_model(
-        self, model: str, prompt: str, system_prompt: str, max_tokens: int
-    ) -> str:
+    async def _call_model(self, model: str, prompt: str, system_prompt: str, max_tokens: int) -> str:
         """モデル固有のAPI呼び出し"""
         if model.startswith("claude"):
             return await self._call_anthropic(model, prompt, system_prompt, max_tokens)
@@ -156,9 +157,7 @@ class LLMOrchestrator:
         else:
             raise ValueError(f"Unknown model: {model}")
 
-    async def _call_anthropic(
-        self, model: str, prompt: str, system_prompt: str, max_tokens: int
-    ) -> str:
+    async def _call_anthropic(self, model: str, prompt: str, system_prompt: str, max_tokens: int) -> str:
         import anthropic
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -170,9 +169,7 @@ class LLMOrchestrator:
         )
         return response.content[0].text
 
-    async def _call_openai(
-        self, model: str, prompt: str, system_prompt: str, max_tokens: int
-    ) -> str:
+    async def _call_openai(self, model: str, prompt: str, system_prompt: str, max_tokens: int) -> str:
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -181,14 +178,10 @@ class LLMOrchestrator:
             messages.append({"role": "system", "content": system_prompt})
         messages.append({"role": "user", "content": prompt})
 
-        response = await client.chat.completions.create(
-            model=model, messages=messages, max_tokens=max_tokens
-        )
+        response = await client.chat.completions.create(model=model, messages=messages, max_tokens=max_tokens)
         return response.choices[0].message.content or ""
 
-    async def _call_google(
-        self, model: str, prompt: str, system_prompt: str, max_tokens: int
-    ) -> str:
+    async def _call_google(self, model: str, prompt: str, system_prompt: str, max_tokens: int) -> str:
         import vertexai
         from vertexai.generative_models import GenerativeModel
 
@@ -198,9 +191,7 @@ class LLMOrchestrator:
         response = await gen_model.generate_content_async(full_prompt)
         return response.text
 
-    async def _call_local(
-        self, model: str, prompt: str, system_prompt: str, max_tokens: int
-    ) -> str:
+    async def _call_local(self, model: str, prompt: str, system_prompt: str, max_tokens: int) -> str:
         """ローカルLLM (Ollama/vLLM互換)"""
         import httpx
 

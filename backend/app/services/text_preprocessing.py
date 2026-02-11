@@ -20,6 +20,7 @@ logger = get_logger(__name__)
 @dataclass
 class PreprocessingStats:
     """前処理の統計情報"""
+
     total_rows: int = 0
     null_count: int = 0
     null_rate: float = 0.0
@@ -36,12 +37,71 @@ class TextPreprocessor:
     """テキスト前処理エンジン"""
 
     # 言語別ストップワード（プリセット）
-    STOPWORDS_JA = {"の", "に", "は", "を", "た", "が", "で", "て", "と", "し", "れ", "さ",
-                    "ある", "いる", "する", "こと", "これ", "それ", "もの", "ない", "です", "ます"}
-    STOPWORDS_EN = {"the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
-                    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-                    "should", "may", "might", "can", "shall", "and", "or", "but", "if",
-                    "in", "on", "at", "to", "for", "of", "with", "by", "from", "this", "that"}
+    STOPWORDS_JA = {
+        "の",
+        "に",
+        "は",
+        "を",
+        "た",
+        "が",
+        "で",
+        "て",
+        "と",
+        "し",
+        "れ",
+        "さ",
+        "ある",
+        "いる",
+        "する",
+        "こと",
+        "これ",
+        "それ",
+        "もの",
+        "ない",
+        "です",
+        "ます",
+    }
+    STOPWORDS_EN = {
+        "the",
+        "a",
+        "an",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "being",
+        "have",
+        "has",
+        "had",
+        "do",
+        "does",
+        "did",
+        "will",
+        "would",
+        "could",
+        "should",
+        "may",
+        "might",
+        "can",
+        "shall",
+        "and",
+        "or",
+        "but",
+        "if",
+        "in",
+        "on",
+        "at",
+        "to",
+        "for",
+        "of",
+        "with",
+        "by",
+        "from",
+        "this",
+        "that",
+    }
 
     def __init__(self) -> None:
         self._embedding_model: SentenceTransformer | None = None
@@ -76,6 +136,7 @@ class TextPreprocessor:
     def normalize_chars(self, text: str) -> str:
         """全角半角統一・Unicode正規化"""
         import unicodedata
+
         text = unicodedata.normalize("NFKC", text)
         return text
 
@@ -83,6 +144,7 @@ class TextPreprocessor:
         """日本語形態素解析（MeCab/fugashi）"""
         try:
             import fugashi
+
             tagger = fugashi.Tagger()
             return [word.surface for word in tagger(text) if word.feature[0] in ("名詞", "動詞", "形容詞")]
         except ImportError:
@@ -92,6 +154,7 @@ class TextPreprocessor:
     def tokenize_zh(self, text: str) -> list[str]:
         """中国語分かち書き（jieba）"""
         import jieba
+
         return list(jieba.cut(text))
 
     def tokenize(self, text: str, language: str = "ja") -> list[str]:

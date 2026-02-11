@@ -80,9 +80,5 @@ async def search_similar(
     threshold: float = 0.5,
 ) -> dict:
     """テキスト類似性検索"""
-    from app.services.text_preprocessing import text_preprocessor
-    import numpy as np
-
-    query_embedding = text_preprocessor.generate_embeddings([query])
-    # 実運用ではデータベースからEmbeddingを取得してコサイン類似度計算
+    # 実運用ではEmbeddingを生成しデータベースからコサイン類似度計算
     return {"query": query, "results": [], "message": "Database integration required"}

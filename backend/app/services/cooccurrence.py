@@ -5,8 +5,8 @@
 
 from collections import Counter, defaultdict
 
-import networkx as nx
 import community as community_louvain
+import networkx as nx
 
 from app.core.logging import get_logger
 from app.models.schemas import (
@@ -51,27 +51,23 @@ class CooccurrenceService:
                     cooccurrence_counts[pair] += 1
 
         # 閾値でフィルタリング
-        filtered_pairs = {
-            pair: count
-            for pair, count in cooccurrence_counts.items()
-            if count >= request.min_frequency
-        }
+        filtered_pairs = {pair: count for pair, count in cooccurrence_counts.items() if count >= request.min_frequency}
 
         # NetworkXグラフ構築
-        G = nx.Graph()
+        graph = nx.Graph()
         for (w1, w2), weight in filtered_pairs.items():
-            G.add_edge(w1, w2, weight=weight)
+            graph.add_edge(w1, w2, weight=weight)
 
-        if G.number_of_nodes() == 0:
+        if graph.number_of_nodes() == 0:
             return CooccurrenceResult(nodes=[], edges=[], communities={}, modularity=0.0)
 
         # 中心性指標
-        degree_centrality = nx.degree_centrality(G)
-        betweenness_centrality = nx.betweenness_centrality(G, weight="weight")
+        degree_centrality = nx.degree_centrality(graph)
+        betweenness_centrality = nx.betweenness_centrality(graph, weight="weight")
 
         # Louvainコミュニティ検知
-        partition = community_louvain.best_partition(G, weight="weight")
-        modularity = community_louvain.modularity(partition, G, weight="weight")
+        partition = community_louvain.best_partition(graph, weight="weight")
+        modularity = community_louvain.modularity(partition, graph, weight="weight")
 
         # コミュニティをグループ化
         communities: dict[int, list[str]] = defaultdict(list)
@@ -87,14 +83,11 @@ class CooccurrenceService:
                 betweenness_centrality=betweenness_centrality.get(node, 0.0),
                 community_id=partition.get(node, 0),
             )
-            for node in G.nodes()
+            for node in graph.nodes()
         ]
 
         # エッジリスト
-        edges = [
-            NetworkEdge(source=u, target=v, weight=d["weight"])
-            for u, v, d in G.edges(data=True)
-        ]
+        edges = [NetworkEdge(source=u, target=v, weight=d["weight"]) for u, v, d in graph.edges(data=True)]
 
         logger.info(
             "cooccurrence_complete",
@@ -131,13 +124,15 @@ class CooccurrenceService:
         results = []
         for period, group in df.groupby("period"):
             result = self.analyze(group["text"].tolist(), request, language)
-            results.append({
-                "period": str(period),
-                "nodes": len(result.nodes),
-                "edges": len(result.edges),
-                "modularity": result.modularity,
-                "network": result.model_dump(),
-            })
+            results.append(
+                {
+                    "period": str(period),
+                    "nodes": len(result.nodes),
+                    "edges": len(result.edges),
+                    "modularity": result.modularity,
+                    "network": result.model_dump(),
+                }
+            )
 
         return results
 

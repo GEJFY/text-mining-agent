@@ -2,9 +2,9 @@
 
 from fastapi import APIRouter
 
+from app.agents.analysis_agent import AgentContext, AnalysisAgent
 from app.core.config import HITLMode
-from app.models.schemas import AnalysisRequest, AgentInsight
-from app.agents.analysis_agent import AnalysisAgent, AgentContext
+from app.models.schemas import AnalysisRequest
 
 router = APIRouter()
 

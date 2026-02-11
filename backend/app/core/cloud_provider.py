@@ -16,6 +16,7 @@ logger = get_logger(__name__)
 @dataclass
 class APIGatewayConfig:
     """API Gateway共通設定"""
+
     rate_limit_per_minute: int = 100
     token_budget_per_hour: int = 1_000_000
     enable_caching: bool = True
@@ -60,9 +61,7 @@ class AWSAPIGateway(BaseAPIGateway):
     async def register_api(self, api_id: str, backend_url: str) -> dict:
         # boto3を使ってAPI Gatewayにリソースを登録
         logger.info("aws_api_register", api_id=api_id)
-        import boto3
-        client = boto3.client("apigateway", region_name=settings.aws_region)
-        # 実運用ではREST APIリソースの作成/更新
+        # 実運用ではboto3でREST APIリソースの作成/更新
         return {"provider": "aws", "api_id": api_id, "status": "registered"}
 
     async def check_rate_limit(self, client_id: str) -> bool:
@@ -71,6 +70,7 @@ class AWSAPIGateway(BaseAPIGateway):
 
     async def track_usage(self, client_id: str, tokens_used: int, model: str) -> None:
         import boto3
+
         cloudwatch = boto3.client("cloudwatch", region_name=settings.aws_region)
         cloudwatch.put_metric_data(
             Namespace="NexusTextAI",
@@ -92,6 +92,7 @@ class AWSAPIGateway(BaseAPIGateway):
 
     async def get_secret(self, secret_name: str) -> str:
         import boto3
+
         client = boto3.client("secretsmanager", region_name=settings.aws_region)
         response = client.get_secret_value(SecretId=secret_name)
         return response["SecretString"]
@@ -188,6 +189,7 @@ class LocalGateway(BaseAPIGateway):
 
     async def get_secret(self, secret_name: str) -> str:
         import os
+
         return os.getenv(secret_name, "")
 
 

@@ -5,7 +5,7 @@
 """
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -75,13 +75,13 @@ class ReportGenerator:
         report_content = await self._generate_sections(sections, analysis_data, request)
 
         # 出力形式に応じたファイル生成
-        file_path = await self._export(report_id, report_content, request.output_format)
+        await self._export(report_id, report_content, request.output_format)
 
         return ReportResponse(
             report_id=report_id,
             download_url=f"/api/v1/reports/{report_id}/download",
             format=request.output_format,
-            generated_at=datetime.now(timezone.utc),
+            generated_at=datetime.now(UTC),
         )
 
     async def _generate_sections(
@@ -109,18 +109,18 @@ JSON形式:
 {{"title": "{section_title}", "content": "...", "evidence_refs": ["根拠1", "根拠2"]}}"""
 
             try:
-                response = await self.llm.invoke(
-                    prompt, TaskType.SUMMARIZATION, max_tokens=1000
-                )
+                response = await self.llm.invoke(prompt, TaskType.SUMMARIZATION, max_tokens=1000)
                 data = json.loads(response.strip().strip("```json").strip("```"))
                 contents.append(data)
             except Exception as e:
                 logger.warning("section_generation_failed", section=section_title, error=str(e))
-                contents.append({
-                    "title": section_title,
-                    "content": f"（セクション生成中にエラーが発生しました: {e}）",
-                    "evidence_refs": [],
-                })
+                contents.append(
+                    {
+                        "title": section_title,
+                        "content": f"（セクション生成中にエラーが発生しました: {e}）",
+                        "evidence_refs": [],
+                    }
+                )
 
         return contents
 
@@ -136,9 +136,7 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         except json.JSONDecodeError:
             return ["概要", "分析結果", "考察", "推奨事項"]
 
-    async def _export(
-        self, report_id: str, contents: list[dict], fmt: ReportFormat
-    ) -> Path:
+    async def _export(self, report_id: str, contents: list[dict], fmt: ReportFormat) -> Path:
         """各形式でファイルを出力"""
         if fmt == ReportFormat.PPTX:
             return await self._export_pptx(report_id, contents)
@@ -153,7 +151,6 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
     async def _export_pptx(self, report_id: str, contents: list[dict]) -> Path:
         """PowerPoint出力"""
         from pptx import Presentation
-        from pptx.util import Inches, Pt
 
         prs = Presentation()
 
@@ -174,8 +171,8 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
     async def _export_pdf(self, report_id: str, contents: list[dict]) -> Path:
         """PDF出力"""
         from reportlab.lib.pagesizes import A4
-        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
         path = self.output_dir / f"{report_id}.pdf"
         doc = SimpleDocTemplate(str(path), pagesize=A4)
@@ -224,11 +221,13 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
 
         ws.append(["セクション", "内容", "エビデンス"])
         for section in contents:
-            ws.append([
-                section.get("title", ""),
-                section.get("content", ""),
-                " | ".join(section.get("evidence_refs", [])),
-            ])
+            ws.append(
+                [
+                    section.get("title", ""),
+                    section.get("content", ""),
+                    " | ".join(section.get("evidence_refs", [])),
+                ]
+            )
 
         path = self.output_dir / f"{report_id}.xlsx"
         wb.save(str(path))

@@ -5,11 +5,12 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
-
 # === データインポート ===
+
 
 class ColumnRole(str, Enum):
     """カラムの役割定義"""
+
     TEXT = "text"
     DATE = "date"
     ATTRIBUTE = "attribute"
@@ -19,12 +20,14 @@ class ColumnRole(str, Enum):
 
 class ColumnMapping(BaseModel):
     """動的カラムマッピング"""
+
     column_name: str
     role: ColumnRole
 
 
 class DataImportRequest(BaseModel):
     """データインポートリクエスト"""
+
     file_name: str
     column_mappings: list[ColumnMapping]
     encoding: str | None = None  # 自動検出
@@ -32,6 +35,7 @@ class DataImportRequest(BaseModel):
 
 class DataImportResponse(BaseModel):
     """データインポートレスポンス"""
+
     dataset_id: str
     total_rows: int
     null_rate: float
@@ -42,6 +46,7 @@ class DataImportResponse(BaseModel):
 
 # === クラスター分析 ===
 
+
 class ClusterAlgorithm(str, Enum):
     KMEANS = "kmeans"
     HDBSCAN = "hdbscan"
@@ -50,6 +55,7 @@ class ClusterAlgorithm(str, Enum):
 
 class ClusterRequest(BaseModel):
     """クラスター分析リクエスト"""
+
     dataset_id: str
     algorithm: ClusterAlgorithm = ClusterAlgorithm.KMEANS
     n_clusters: int | None = Field(default=5, ge=2, le=50)
@@ -60,6 +66,7 @@ class ClusterRequest(BaseModel):
 
 class ClusterLabel(BaseModel):
     """クラスターラベル（LLM生成）"""
+
     cluster_id: int
     title: str = Field(max_length=15)
     summary: str = Field(max_length=100)
@@ -70,6 +77,7 @@ class ClusterLabel(BaseModel):
 
 class ClusterResult(BaseModel):
     """クラスター分析結果"""
+
     job_id: str
     algorithm: ClusterAlgorithm
     clusters: list[ClusterLabel]
@@ -81,6 +89,7 @@ class ClusterResult(BaseModel):
 
 # === 感情分析 ===
 
+
 class SentimentMode(str, Enum):
     BASIC = "basic"
     BUSINESS = "business"
@@ -91,6 +100,7 @@ class SentimentMode(str, Enum):
 
 class SentimentAxisDefinition(BaseModel):
     """感情軸定義"""
+
     name: str
     description: str = ""
     criteria: str = ""
@@ -98,6 +108,7 @@ class SentimentAxisDefinition(BaseModel):
 
 class SentimentRequest(BaseModel):
     """感情分析リクエスト"""
+
     dataset_id: str
     mode: SentimentMode = SentimentMode.BASIC
     custom_axes: list[SentimentAxisDefinition] | None = None
@@ -106,6 +117,7 @@ class SentimentRequest(BaseModel):
 
 class SentimentEstimate(BaseModel):
     """実行前のコスト見積り"""
+
     total_records: int
     estimated_tokens: int
     estimated_cost_usd: float
@@ -114,6 +126,7 @@ class SentimentEstimate(BaseModel):
 
 class SentimentResultItem(BaseModel):
     """個別レコードの感情分析結果"""
+
     record_id: str
     labels: list[str]
     scores: dict[str, float]
@@ -122,6 +135,7 @@ class SentimentResultItem(BaseModel):
 
 class SentimentResult(BaseModel):
     """感情分析結果"""
+
     job_id: str
     mode: SentimentMode
     axes: list[str]
@@ -132,8 +146,10 @@ class SentimentResult(BaseModel):
 
 # === 共起ネットワーク ===
 
+
 class CooccurrenceRequest(BaseModel):
     """共起ネットワーク分析リクエスト"""
+
     dataset_id: str
     min_frequency: int = Field(default=3, ge=1)
     window_size: int = Field(default=5, ge=2, le=20)
@@ -143,6 +159,7 @@ class CooccurrenceRequest(BaseModel):
 
 class NetworkNode(BaseModel):
     """ネットワークのノード"""
+
     word: str
     frequency: int
     degree_centrality: float = 0.0
@@ -152,6 +169,7 @@ class NetworkNode(BaseModel):
 
 class NetworkEdge(BaseModel):
     """ネットワークのエッジ"""
+
     source: str
     target: str
     weight: int
@@ -159,6 +177,7 @@ class NetworkEdge(BaseModel):
 
 class CooccurrenceResult(BaseModel):
     """共起ネットワーク結果"""
+
     nodes: list[NetworkNode]
     edges: list[NetworkEdge]
     communities: dict[int, list[str]]
@@ -166,6 +185,7 @@ class CooccurrenceResult(BaseModel):
 
 
 # === エージェント ===
+
 
 class AgentPhase(str, Enum):
     OBSERVE = "observe"
@@ -177,6 +197,7 @@ class AgentPhase(str, Enum):
 
 class AgentLogEntry(BaseModel):
     """エージェントのログエントリー"""
+
     timestamp: datetime
     phase: AgentPhase
     thought: str
@@ -187,6 +208,7 @@ class AgentLogEntry(BaseModel):
 
 class AgentInsight(BaseModel):
     """エージェントが導出したインサイト"""
+
     title: str
     description: str
     evidence: list[str]
@@ -196,12 +218,14 @@ class AgentInsight(BaseModel):
 
 class AnalysisRequest(BaseModel):
     """自律分析リクエスト"""
+
     dataset_id: str
     objective: str = ""
     hitl_mode: str = "semi_auto"
 
 
 # === レポート ===
+
 
 class ReportTemplate(str, Enum):
     VOC = "voc"
@@ -220,6 +244,7 @@ class ReportFormat(str, Enum):
 
 class ReportRequest(BaseModel):
     """レポート生成リクエスト"""
+
     dataset_id: str
     template: ReportTemplate = ReportTemplate.VOC
     output_format: ReportFormat = ReportFormat.PDF
@@ -229,6 +254,7 @@ class ReportRequest(BaseModel):
 
 class ReportResponse(BaseModel):
     """レポート生成レスポンス"""
+
     report_id: str
     download_url: str
     format: ReportFormat

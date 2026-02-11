@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiClient } from '../api/client';
+import apiClient from '../api/client';
 
 /* 推論フェーズの定義 */
 const PHASES = [

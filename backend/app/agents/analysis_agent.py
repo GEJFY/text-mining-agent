@@ -6,7 +6,7 @@ HITL（Human-in-the-Loop）制御、Groundingスコアによる品質保証。
 
 import json
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from uuid import uuid4
 
@@ -31,6 +31,7 @@ class AgentState(str, Enum):
 @dataclass
 class AgentContext:
     """エージェントの実行コンテキスト"""
+
     dataset_id: str
     objective: str
     texts: list[str] = field(default_factory=list)
@@ -46,6 +47,7 @@ class AgentContext:
 @dataclass
 class AnalysisAgent:
     """自律型テキスト分析エージェント"""
+
     agent_id: str = field(default_factory=lambda: str(uuid4()))
     state: AgentState = AgentState.IDLE
     hitl_mode: HITLMode = HITLMode.SEMI_AUTO
@@ -56,11 +58,17 @@ class AnalysisAgent:
     def __post_init__(self) -> None:
         self.llm = LLMOrchestrator()
 
-    def _log(self, phase: AgentPhase, thought: str, action: str | None = None,
-             result: str | None = None, confidence: float = 0.0) -> None:
+    def _log(
+        self,
+        phase: AgentPhase,
+        thought: str,
+        action: str | None = None,
+        result: str | None = None,
+        confidence: float = 0.0,
+    ) -> None:
         """ログエントリを追加"""
         entry = AgentLogEntry(
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             phase=phase,
             thought=thought,
             action=action,
@@ -100,9 +108,7 @@ class AnalysisAgent:
             logger.error("agent_error", error=str(e))
             raise
 
-    async def resume_after_approval(
-        self, context: AgentContext, approved_hypotheses: list[str]
-    ) -> list[AgentInsight]:
+    async def resume_after_approval(self, context: AgentContext, approved_hypotheses: list[str]) -> list[AgentInsight]:
         """HITL承認後に推論を再開"""
         self.state = AgentState.RUNNING
         self.pending_approval = None
@@ -130,7 +136,7 @@ class AnalysisAgent:
 {json.dumps(stats, ensure_ascii=False, indent=2)}
 
 サンプルテキスト(最初の5件):
-{chr(10).join(f'- {t[:200]}' for t in context.texts[:5])}
+{chr(10).join(f"- {t[:200]}" for t in context.texts[:5])}
 
 JSON配列で出力: ["観測1", "観測2", ...]"""
 
@@ -150,10 +156,10 @@ JSON配列で出力: ["観測1", "観測2", ...]"""
 
         prompt = f"""以下の観測結果から、データ分析で検証可能な仮説を3つ生成してください。
 
-分析目的: {context.objective or '自由探索'}
+分析目的: {context.objective or "自由探索"}
 
 観測:
-{chr(10).join(f'- {o}' for o in observations)}
+{chr(10).join(f"- {o}" for o in observations)}
 
 各仮説は「〜ではないか？」の形式で、フィルタリング・セグメント分析・深堀りで検証可能なものにしてください。
 JSON配列: ["仮説1", "仮説2", "仮説3"]"""
@@ -168,9 +174,7 @@ JSON配列: ["仮説1", "仮説2", "仮説3"]"""
         self._log(AgentPhase.HYPOTHESIZE, "仮説生成完了", result=str(hypotheses))
         return hypotheses
 
-    async def _explore_verify_synthesize(
-        self, context: AgentContext, hypotheses: list[str]
-    ) -> list[AgentInsight]:
+    async def _explore_verify_synthesize(self, context: AgentContext, hypotheses: list[str]) -> list[AgentInsight]:
         """Phase 3-5: 探索・検証・統合"""
 
         # Phase 3: 探索
@@ -179,24 +183,21 @@ JSON配列: ["仮説1", "仮説2", "仮説3"]"""
         exploration_prompt = f"""以下の仮説を検証するために、テキストデータ({len(context.texts)}件)を分析してください。
 
 仮説:
-{chr(10).join(f'{i+1}. {h}' for i, h in enumerate(hypotheses))}
+{chr(10).join(f"{i + 1}. {h}" for i, h in enumerate(hypotheses))}
 
 サンプルデータ:
-{chr(10).join(f'- {t[:300]}' for t in context.texts[:20])}
+{chr(10).join(f"- {t[:300]}" for t in context.texts[:20])}
 
 各仮説について、裏付けとなる証拠と反証を示してください。
 JSON形式:
 [{{"hypothesis": "...", "supporting_evidence": [...], "counter_evidence": [...], "confidence": 0.8}}]"""
 
-        response = await self.llm.invoke(
-            exploration_prompt, TaskType.LABELING, max_tokens=4096
-        )
+        response = await self.llm.invoke(exploration_prompt, TaskType.LABELING, max_tokens=4096)
 
         try:
             exploration_results = json.loads(response.strip().strip("```json").strip("```"))
         except json.JSONDecodeError:
-            exploration_results = [{"hypothesis": h, "supporting_evidence": [], "confidence": 0.5}
-                                   for h in hypotheses]
+            exploration_results = [{"hypothesis": h, "supporting_evidence": [], "confidence": 0.5} for h in hypotheses]
 
         self._log(AgentPhase.EXPLORE, "探索完了", result=str(len(exploration_results)))
 
@@ -230,12 +231,14 @@ JSON配列:
                 for i in insights_data
             ]
         except (json.JSONDecodeError, KeyError):
-            self.insights = [AgentInsight(
-                title="分析結果",
-                description=response[:500],
-                evidence=[],
-                grounding_score=0.5,
-            )]
+            self.insights = [
+                AgentInsight(
+                    title="分析結果",
+                    description=response[:500],
+                    evidence=[],
+                    grounding_score=0.5,
+                )
+            ]
 
         self.state = AgentState.COMPLETED
         self._log(AgentPhase.SYNTHESIZE, "分析完了", result=f"{len(self.insights)}件のインサイト")

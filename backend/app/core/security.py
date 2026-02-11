@@ -1,6 +1,6 @@
 """認証・認可 - JWT/RBAC/PII匿名化"""
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 
 from jose import JWTError, jwt
@@ -14,6 +14,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserRole(str, Enum):
     """ユーザーロール"""
+
     ADMIN = "admin"
     ANALYST = "analyst"
     VIEWER = "viewer"
@@ -28,7 +29,7 @@ class TokenData(BaseModel):
 
 def create_access_token(user_id: str, role: UserRole, tenant_id: str) -> str:
     """JWTアクセストークン生成"""
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_expiration_minutes)
+    expire = datetime.now(UTC) + timedelta(minutes=settings.jwt_expiration_minutes)
     payload = {
         "sub": user_id,
         "role": role.value,
@@ -46,7 +47,7 @@ def verify_token(token: str) -> TokenData:
             user_id=payload["sub"],
             role=UserRole(payload["role"]),
             tenant_id=payload["tenant_id"],
-            exp=datetime.fromtimestamp(payload["exp"], tz=timezone.utc),
+            exp=datetime.fromtimestamp(payload["exp"], tz=UTC),
         )
     except JWTError as e:
         raise ValueError(f"Invalid token: {e}") from e

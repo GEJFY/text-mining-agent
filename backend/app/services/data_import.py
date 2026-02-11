@@ -13,7 +13,7 @@ import chardet
 import pandas as pd
 
 from app.core.logging import get_logger
-from app.models.schemas import ColumnMapping, ColumnRole, DataImportRequest, DataImportResponse
+from app.models.schemas import ColumnMapping, ColumnRole, DataImportResponse
 
 logger = get_logger(__name__)
 

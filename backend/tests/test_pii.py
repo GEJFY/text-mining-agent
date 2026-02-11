@@ -13,7 +13,7 @@ PIIAnonymizer の以下の機能を検証:
 
 import pytest
 
-from app.services.pii_anonymizer import PIIAnonymizer, PIIMapping
+from app.services.pii_anonymizer import PIIAnonymizer
 
 
 @pytest.fixture

@@ -240,11 +240,13 @@ class TestPreprocessPipeline:
 
     def test_full_pipeline(self, preprocessor: TextPreprocessor) -> None:
         """パイプライン全ステップが実行されること"""
-        texts = pd.Series([
-            "<p>テスト文章１</p>",
-            "<div>Ｈello World</div>",
-            None,
-        ])
+        texts = pd.Series(
+            [
+                "<p>テスト文章１</p>",
+                "<div>Ｈello World</div>",
+                None,
+            ]
+        )
         cleaned, stats = preprocessor.preprocess_pipeline(texts, language="ja")
         assert len(cleaned) == 2  # NULL行が除去される
         assert stats.removed_rows == 1
@@ -254,17 +256,13 @@ class TestPreprocessPipeline:
     def test_pipeline_html_off(self, preprocessor: TextPreprocessor) -> None:
         """HTML除去を無効化できること"""
         texts = pd.Series(["<p>テスト</p>"])
-        cleaned, stats = preprocessor.preprocess_pipeline(
-            texts, remove_html=False
-        )
+        cleaned, stats = preprocessor.preprocess_pipeline(texts, remove_html=False)
         assert "html_removed" not in stats.transformations
 
     def test_pipeline_normalize_off(self, preprocessor: TextPreprocessor) -> None:
         """正規化を無効化できること"""
         texts = pd.Series(["ＡＢＣ"])
-        cleaned, stats = preprocessor.preprocess_pipeline(
-            texts, normalize=False
-        )
+        cleaned, stats = preprocessor.preprocess_pipeline(texts, normalize=False)
         assert "chars_normalized" not in stats.transformations
 
     def test_pipeline_removes_nulls(self, preprocessor: TextPreprocessor) -> None:

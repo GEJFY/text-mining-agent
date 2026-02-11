@@ -3,12 +3,12 @@
 from enum import Enum
 from functools import lru_cache
 
-from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
 class CloudProvider(str, Enum):
     """対応クラウドプロバイダー"""
+
     AWS = "aws"
     AZURE = "azure"
     GCP = "gcp"
@@ -17,6 +17,7 @@ class CloudProvider(str, Enum):
 
 class HITLMode(str, Enum):
     """Human-in-the-Loop制御モード"""
+
     FULL_AUTO = "full_auto"
     SEMI_AUTO = "semi_auto"
     GUIDED = "guided"
@@ -24,6 +25,7 @@ class HITLMode(str, Enum):
 
 class Settings(BaseSettings):
     """グローバル設定"""
+
     # アプリケーション
     app_name: str = "NexusText AI"
     app_version: str = "7.0.0"

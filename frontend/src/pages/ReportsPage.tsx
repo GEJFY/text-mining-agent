@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { apiClient } from '../api/client';
+import apiClient from '../api/client';
 
 /* レポートテンプレート定義 */
 const TEMPLATES = [

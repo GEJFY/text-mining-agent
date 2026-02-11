@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app.api.endpoints import analysis, data, health, reports, agent
+from app.api.endpoints import agent, analysis, data, health, reports
 
 api_router = APIRouter()
 

@@ -9,8 +9,8 @@ from uuid import uuid4
 
 import numpy as np
 from sklearn.cluster import KMeans
-from sklearn.mixture import GaussianMixture
 from sklearn.metrics import silhouette_score
+from sklearn.mixture import GaussianMixture
 from umap import UMAP
 
 from app.core.logging import get_logger
@@ -32,9 +32,7 @@ class ClusteringService:
     def __init__(self, llm: LLMOrchestrator) -> None:
         self.llm = llm
 
-    async def analyze(
-        self, request: ClusterRequest, texts: list[str]
-    ) -> ClusterResult:
+    async def analyze(self, request: ClusterRequest, texts: list[str]) -> ClusterResult:
         """クラスター分析のフルパイプラインを実行"""
         job_id = str(uuid4())
         logger.info("clustering_start", job_id=job_id, algorithm=request.algorithm)
@@ -53,9 +51,7 @@ class ClusteringService:
         umap_coords = umap_model.fit_transform(embeddings)
 
         # クラスタリング実行
-        labels, n_clusters = self._run_clustering(
-            embeddings, request.algorithm, request.n_clusters
-        )
+        labels, n_clusters = self._run_clustering(embeddings, request.algorithm, request.n_clusters)
 
         # シルエットスコア
         valid_mask = labels >= 0
@@ -91,6 +87,7 @@ class ClusteringService:
 
         elif algorithm == ClusterAlgorithm.HDBSCAN:
             import hdbscan
+
             model = hdbscan.HDBSCAN(min_cluster_size=10, metric="euclidean")
             labels = model.fit_predict(embeddings)
             n = len(set(labels)) - (1 if -1 in labels else 0)
@@ -124,12 +121,14 @@ class ClusteringService:
             indices = np.where(mask)[0]
             for idx in indices:
                 dist = float(np.linalg.norm(embeddings[idx] - centroid))
-                outliers.append({
-                    "index": int(idx),
-                    "text": texts[idx][:200],
-                    "cluster_id": int(cluster_id),
-                    "distance": dist,
-                })
+                outliers.append(
+                    {
+                        "index": int(idx),
+                        "text": texts[idx][:200],
+                        "cluster_id": int(cluster_id),
+                        "distance": dist,
+                    }
+                )
 
         outliers.sort(key=lambda x: x["distance"], reverse=True)
         return outliers[:top_n]
@@ -163,7 +162,7 @@ class ClusteringService:
 このクラスターのタイトル（15字以内）、要約（100字以内）、キーワード（5個）をJSON形式で生成してください。
 
 代表テキスト:
-{chr(10).join(f'- {t[:200]}' for t in representative_texts)}
+{chr(10).join(f"- {t[:200]}" for t in representative_texts)}
 
 出力形式:
 {{"title": "...", "summary": "...", "keywords": ["k1", "k2", "k3", "k4", "k5"]}}"""
@@ -176,24 +175,28 @@ class ClusteringService:
                     max_tokens=500,
                 )
                 data = json.loads(response.strip().strip("```json").strip("```"))
-                cluster_labels.append(ClusterLabel(
-                    cluster_id=cluster_id,
-                    title=data.get("title", f"クラスター{cluster_id}")[:15],
-                    summary=data.get("summary", "")[:100],
-                    keywords=data.get("keywords", [])[:5],
-                    size=cluster_size,
-                    centroid_texts=[t[:200] for t in representative_texts],
-                ))
+                cluster_labels.append(
+                    ClusterLabel(
+                        cluster_id=cluster_id,
+                        title=data.get("title", f"クラスター{cluster_id}")[:15],
+                        summary=data.get("summary", "")[:100],
+                        keywords=data.get("keywords", [])[:5],
+                        size=cluster_size,
+                        centroid_texts=[t[:200] for t in representative_texts],
+                    )
+                )
             except Exception as e:
                 logger.warning("label_generation_failed", cluster_id=cluster_id, error=str(e))
-                cluster_labels.append(ClusterLabel(
-                    cluster_id=cluster_id,
-                    title=f"クラスター{cluster_id}",
-                    summary=f"{cluster_size}件のテキストを含むクラスター",
-                    keywords=[],
-                    size=cluster_size,
-                    centroid_texts=[t[:200] for t in representative_texts],
-                ))
+                cluster_labels.append(
+                    ClusterLabel(
+                        cluster_id=cluster_id,
+                        title=f"クラスター{cluster_id}",
+                        summary=f"{cluster_size}件のテキストを含むクラスター",
+                        keywords=[],
+                        size=cluster_size,
+                        centroid_texts=[t[:200] for t in representative_texts],
+                    )
+                )
 
         return cluster_labels
 
@@ -209,13 +212,9 @@ class ClusteringService:
 
         model = KMeans(n_clusters=n_sub_clusters, random_state=42)
         sub_labels = model.fit_predict(parent_embeddings)
-        return await self._generate_labels(
-            parent_cluster_texts, sub_labels, n_sub_clusters, parent_embeddings
-        )
+        return await self._generate_labels(parent_cluster_texts, sub_labels, n_sub_clusters, parent_embeddings)
 
-    async def compare_clusters(
-        self, texts: list[str], labels: np.ndarray, cluster_a: int, cluster_b: int
-    ) -> dict:
+    async def compare_clusters(self, texts: list[str], labels: np.ndarray, cluster_a: int, cluster_b: int) -> dict:
         """2つのクラスター間の比較"""
         texts_a = [texts[i] for i in range(len(texts)) if labels[i] == cluster_a]
         texts_b = [texts[i] for i in range(len(texts)) if labels[i] == cluster_b]
@@ -223,10 +222,10 @@ class ClusteringService:
         prompt = f"""2つのテキストクラスターを比較分析してください。
 
 クラスターA（{len(texts_a)}件）サンプル:
-{chr(10).join(f'- {t[:150]}' for t in texts_a[:5])}
+{chr(10).join(f"- {t[:150]}" for t in texts_a[:5])}
 
 クラスターB（{len(texts_b)}件）サンプル:
-{chr(10).join(f'- {t[:150]}' for t in texts_b[:5])}
+{chr(10).join(f"- {t[:150]}" for t in texts_b[:5])}
 
 JSON形式で回答:
 {{"common_themes": [...], "unique_to_a": [...], "unique_to_b": [...], "summary": "..."}}"""

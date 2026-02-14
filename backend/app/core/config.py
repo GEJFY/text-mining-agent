@@ -7,12 +7,25 @@ from pydantic_settings import BaseSettings
 
 
 class CloudProvider(str, Enum):
-    """対応クラウドプロバイダー"""
+    """対応クラウドプロバイダー（インフラ用）"""
 
     AWS = "aws"
     AZURE = "azure"
     GCP = "gcp"
     LOCAL = "local"
+
+
+class LLMDeploymentMode(str, Enum):
+    """LLM呼び出し方式（CloudProviderと独立）
+
+    インフラはAzure、LLMはBedrock経由、という組み合わせも可能。
+    """
+
+    DIRECT = "direct"  # 各ベンダー直接API（現行動作）
+    AWS_BEDROCK = "aws_bedrock"  # AWS Bedrock経由
+    AZURE_AI_FOUNDRY = "azure_ai_foundry"  # Azure AI Foundry経由
+    GCP_VERTEX_AI = "gcp_vertex_ai"  # GCP Vertex AI経由
+    LOCAL = "local"  # Ollama/vLLM
 
 
 class HITLMode(str, Enum):
@@ -83,6 +96,25 @@ class Settings(BaseSettings):
     # Embedding
     embedding_model: str = "paraphrase-multilingual-MiniLM-L12-v2"
     embedding_dimension: int = 384
+
+    # LLMデプロイメントモード（CloudProviderと独立）
+    llm_deployment_mode: str = "direct"
+
+    # AWS Bedrock設定
+    aws_bedrock_region: str = ""
+
+    # Azure AI Foundry設定
+    azure_ai_foundry_endpoint: str = ""
+    azure_ai_foundry_api_key: str = ""
+    azure_ai_foundry_api_version: str = "2024-12-01-preview"
+
+    # GCP Vertex AI設定
+    gcp_vertex_ai_project: str = ""
+    gcp_vertex_ai_region: str = ""
+
+    # ローカルLLM設定
+    local_llm_base_url: str = "http://localhost:11434"
+    local_llm_api_format: str = "ollama"  # ollama / openai_compatible
 
     # Docker Compose ポート設定
     backend_port: int = 8000

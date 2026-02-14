@@ -1,0 +1,174 @@
+# =============================================================================
+# NexusText AI v7.0 - Rollback Pipeline
+# =============================================================================
+# 手動トリガーで指定バージョンにロールバック
+# 対応: AWS / Azure / GCP × staging / production
+# =============================================================================
+
+name: Rollback
+
+on:
+  workflow_dispatch:
+    inputs:
+      cloud_provider:
+        description: "Target cloud provider"
+        required: true
+        type: choice
+        options:
+          - aws
+          - azure
+          - gcp
+      environment:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - staging
+          - production
+      rollback_version:
+        description: "Version to rollback to (e.g., v7.0.0, v7.0.1)"
+        required: true
+        type: string
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  cancel-in-progress: false
+
+env:
+  TERRAFORM_VERSION: "1.9.0"
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  rollback:
+    name: "Rollback ${{ inputs.cloud_provider }} / ${{ inputs.environment }} → ${{ inputs.rollback_version }}"
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ inputs.environment }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.rollback_version }}
+
+      - name: Validate version tag
+        run: |
+          VERSION="${{ inputs.rollback_version }}"
+          if [[ ! "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+ ]]; then
+            echo "::error::Invalid version format. Expected: v<major>.<minor>.<patch>"
+            exit 1
+          fi
+          echo "Rolling back to version: ${VERSION}"
+
+      # --- AWS ---
+      - name: Configure AWS credentials
+        if: inputs.cloud_provider == 'aws'
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'ap-northeast-1' }}
+
+      - name: Login to Amazon ECR
+        if: inputs.cloud_provider == 'aws'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # --- Azure ---
+      - name: Azure Login
+        if: inputs.cloud_provider == 'azure'
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      # --- GCP ---
+      - name: Authenticate to Google Cloud
+        if: inputs.cloud_provider == 'gcp'
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+
+      # --- Terraform Rollback ---
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+      - name: Determine Terraform directory
+        id: tf-dir
+        run: |
+          echo "dir=infra/${{ inputs.cloud_provider }}" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform Init
+        working-directory: ${{ steps.tf-dir.outputs.dir }}
+        run: |
+          CLOUD="${{ inputs.cloud_provider }}"
+          ENV="${{ inputs.environment }}"
+
+          if [ "$CLOUD" == "aws" ]; then
+            terraform init \
+              -backend-config="bucket=${{ vars.AWS_TF_STATE_BUCKET }}" \
+              -backend-config="key=nexustext/${ENV}/terraform.tfstate" \
+              -backend-config="region=${{ vars.AWS_REGION || 'ap-northeast-1' }}"
+          elif [ "$CLOUD" == "azure" ]; then
+            terraform init \
+              -backend-config="resource_group_name=${{ vars.AZURE_TF_RG }}" \
+              -backend-config="storage_account_name=${{ vars.AZURE_TF_STORAGE }}" \
+              -backend-config="container_name=tfstate" \
+              -backend-config="key=nexustext/${ENV}/terraform.tfstate"
+          elif [ "$CLOUD" == "gcp" ]; then
+            terraform init \
+              -backend-config="bucket=${{ vars.GCP_TF_STATE_BUCKET }}" \
+              -backend-config="prefix=nexustext/${ENV}"
+          fi
+
+      - name: Terraform Plan (rollback)
+        working-directory: ${{ steps.tf-dir.outputs.dir }}
+        run: |
+          VERSION="${{ inputs.rollback_version }}"
+          VERSION_CLEAN="${VERSION#v}"
+
+          terraform plan \
+            -var="image_tag=${VERSION_CLEAN}" \
+            -var="environment=${{ inputs.environment }}" \
+            -out=tfplan
+
+      - name: Terraform Apply (rollback)
+        id: deploy
+        working-directory: ${{ steps.tf-dir.outputs.dir }}
+        run: |
+          terraform apply -auto-approve tfplan
+          echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
+
+      - name: Post-rollback Smoke Test
+        if: steps.deploy.outputs.app_url != 'N/A'
+        run: |
+          APP_URL="${{ steps.deploy.outputs.app_url }}"
+          echo "Running post-rollback smoke test against ${APP_URL}..."
+
+          for i in 1 2 3 4 5; do
+            HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/health" --max-time 30 || echo "000")
+            if [ "$HTTP_CODE" == "200" ]; then
+              echo "Rollback smoke test passed (attempt ${i})"
+              exit 0
+            fi
+            echo "Attempt ${i}: HTTP ${HTTP_CODE}, retrying in 10s..."
+            sleep 10
+          done
+
+          echo "::error::Rollback smoke test failed after 5 attempts"
+          exit 1
+
+      - name: Rollback Summary
+        run: |
+          echo "## Rollback Summary" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Item | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Cloud | ${{ inputs.cloud_provider }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Environment | ${{ inputs.environment }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Version | ${{ inputs.rollback_version }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| App URL | ${{ steps.deploy.outputs.app_url }} |" >> "$GITHUB_STEP_SUMMARY"

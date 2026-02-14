@@ -8,13 +8,20 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.router import api_router
 from app.core.config import settings
+from app.core.exception_handlers import register_exception_handlers
 from app.core.logging import setup_logging
+from app.core.telemetry import setup_telemetry
+from app.core.validation import validate_config
+from app.middleware.correlation import CorrelationIdMiddleware
+from app.middleware.rate_limit import RateLimitMiddleware
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """アプリケーションのライフサイクル管理"""
     setup_logging()
+    validate_config()
+    setup_telemetry(app)
     yield
 
 
@@ -25,6 +32,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# ミドルウェア（実行順: 下→上）
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
@@ -33,9 +43,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 例外ハンドラー登録
+register_exception_handlers(app)
+
+# APIルーター
 app.include_router(api_router, prefix="/api/v1")
 
 
 @app.get("/health")
 async def health_check() -> dict[str, str]:
     return {"status": "healthy", "version": "7.0.0"}
+
+
+@app.get("/health/live")
+async def liveness_root() -> dict[str, str]:
+    """ルートレベルliveness（Terraform k8s probe対応）"""
+    return {"status": "alive"}
+
+
+@app.get("/health/ready")
+async def readiness_root() -> dict:
+    """ルートレベルreadiness（Terraform k8s probe対応）"""
+    from app.api.endpoints.health import readiness
+
+    return await readiness()

@@ -231,6 +231,30 @@ jobs:
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke Test
+        if: steps.deploy.outputs.app_url != 'N/A'
+        run: |
+          APP_URL="${{ steps.deploy.outputs.app_url }}"
+          echo "Running smoke tests against ${APP_URL}..."
+
+          # ヘルスチェック
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/health" --max-time 30 || echo "000")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+          echo "Health check passed (HTTP 200)"
+
+          # API応答確認
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/health/ready" --max-time 30 || echo "000")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::warning::Readiness check returned HTTP ${HTTP_CODE} (non-fatal)"
+          else
+            echo "Readiness check passed (HTTP 200)"
+          fi
+
+          echo "Smoke tests completed successfully"
+
   # ---------------------------------------------------------------------------
   # Job 3: Deploy to Azure (Container Apps + Terraform)
   # ---------------------------------------------------------------------------
@@ -285,6 +309,18 @@ jobs:
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
 
+      - name: Smoke Test
+        if: steps.deploy.outputs.app_url != 'N/A'
+        run: |
+          APP_URL="${{ steps.deploy.outputs.app_url }}"
+          echo "Running smoke tests against ${APP_URL}..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/health" --max-time 30 || echo "000")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+          echo "Smoke tests completed successfully"
+
   # ---------------------------------------------------------------------------
   # Job 4: Deploy to GCP (Cloud Run + Terraform)
   # ---------------------------------------------------------------------------
@@ -337,3 +373,15 @@ jobs:
         run: |
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke Test
+        if: steps.deploy.outputs.app_url != 'N/A'
+        run: |
+          APP_URL="${{ steps.deploy.outputs.app_url }}"
+          echo "Running smoke tests against ${APP_URL}..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" "${APP_URL}/health" --max-time 30 || echo "000")
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Health check failed (HTTP ${HTTP_CODE})"
+            exit 1
+          fi
+          echo "Smoke tests completed successfully"

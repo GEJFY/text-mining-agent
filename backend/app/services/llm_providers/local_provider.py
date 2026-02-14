@@ -35,9 +35,7 @@ class LocalLLMProvider(BaseLLMProvider):
         else:
             return await self._call_ollama(model_id, request)
 
-    async def _call_ollama(
-        self, model_id: str, request: LLMRequest
-    ) -> LLMResponse:
+    async def _call_ollama(self, model_id: str, request: LLMRequest) -> LLMResponse:
         """Ollama固有API (/api/generate)"""
         import httpx
 
@@ -51,9 +49,7 @@ class LocalLLMProvider(BaseLLMProvider):
                     json={
                         "model": model_id,
                         "prompt": (
-                            f"{request.system_prompt}\n\n{request.prompt}"
-                            if request.system_prompt
-                            else request.prompt
+                            f"{request.system_prompt}\n\n{request.prompt}" if request.system_prompt else request.prompt
                         ),
                         "stream": False,
                     },
@@ -75,9 +71,7 @@ class LocalLLMProvider(BaseLLMProvider):
                 message=f"Ollama API call failed: {e}",
             ) from e
 
-    async def _call_openai_compatible(
-        self, model_id: str, request: LLMRequest
-    ) -> LLMResponse:
+    async def _call_openai_compatible(self, model_id: str, request: LLMRequest) -> LLMResponse:
         """OpenAI互換API (vLLM, LM Studio)"""
         from openai import AsyncOpenAI
 

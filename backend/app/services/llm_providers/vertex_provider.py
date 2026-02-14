@@ -28,8 +28,7 @@ class GCPVertexAIProvider(BaseLLMProvider):
             import vertexai
 
             vertexai.init(
-                project=settings.gcp_vertex_ai_project
-                or settings.google_cloud_project,
+                project=settings.gcp_vertex_ai_project or settings.google_cloud_project,
                 location=settings.gcp_vertex_ai_region or settings.gcp_region,
             )
             self._initialized = True
@@ -47,9 +46,7 @@ class GCPVertexAIProvider(BaseLLMProvider):
 
         try:
             if "claude" in model_id:
-                return await self._invoke_claude_on_vertex(
-                    model_id, request, start_time
-                )
+                return await self._invoke_claude_on_vertex(model_id, request, start_time)
             else:
                 return await self._invoke_gemini(model_id, request, start_time)
         except LLMProviderError:
@@ -62,18 +59,12 @@ class GCPVertexAIProvider(BaseLLMProvider):
                 message=f"Vertex AI call failed: {e}",
             ) from e
 
-    async def _invoke_gemini(
-        self, model_id: str, request: LLMRequest, start_time: float
-    ) -> LLMResponse:
+    async def _invoke_gemini(self, model_id: str, request: LLMRequest, start_time: float) -> LLMResponse:
         """Vertex AI Geminiモデル呼び出し"""
         from vertexai.generative_models import GenerativeModel
 
         gen_model = GenerativeModel(model_id)
-        full_prompt = (
-            f"{request.system_prompt}\n\n{request.prompt}"
-            if request.system_prompt
-            else request.prompt
-        )
+        full_prompt = f"{request.system_prompt}\n\n{request.prompt}" if request.system_prompt else request.prompt
         response = await gen_model.generate_content_async(full_prompt)
         latency_ms = (time.monotonic() - start_time) * 1000
         return LLMResponse(
@@ -83,15 +74,12 @@ class GCPVertexAIProvider(BaseLLMProvider):
             latency_ms=latency_ms,
         )
 
-    async def _invoke_claude_on_vertex(
-        self, model_id: str, request: LLMRequest, start_time: float
-    ) -> LLMResponse:
+    async def _invoke_claude_on_vertex(self, model_id: str, request: LLMRequest, start_time: float) -> LLMResponse:
         """Vertex AI Claude (Model Garden) 呼び出し"""
         from anthropic import AsyncAnthropicVertex
 
         client = AsyncAnthropicVertex(
-            project_id=settings.gcp_vertex_ai_project
-            or settings.google_cloud_project,
+            project_id=settings.gcp_vertex_ai_project or settings.google_cloud_project,
             region=settings.gcp_vertex_ai_region or settings.gcp_region,
         )
         response = await client.messages.create(

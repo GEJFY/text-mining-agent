@@ -24,10 +24,7 @@ class LLMProviderError(Exception):
         if self.original_error is None:
             return False
         err_str = str(self.original_error).lower()
-        return any(
-            keyword in err_str
-            for keyword in ["rate limit", "throttl", "too many requests", "429"]
-        )
+        return any(keyword in err_str for keyword in ["rate limit", "throttl", "too many requests", "429"])
 
     @property
     def is_auth_error(self) -> bool:
@@ -35,10 +32,7 @@ class LLMProviderError(Exception):
         if self.original_error is None:
             return False
         err_str = str(self.original_error).lower()
-        return any(
-            keyword in err_str
-            for keyword in ["unauthorized", "forbidden", "401", "403", "invalid api key"]
-        )
+        return any(keyword in err_str for keyword in ["unauthorized", "forbidden", "401", "403", "invalid api key"])
 
 
 class ModelNotAvailableError(LLMProviderError):

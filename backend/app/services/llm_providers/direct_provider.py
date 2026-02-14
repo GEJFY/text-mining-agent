@@ -49,9 +49,7 @@ class DirectAPIProvider(BaseLLMProvider):
                 message=f"Direct API call failed: {e}",
             ) from e
 
-    async def _call_anthropic(
-        self, model_id: str, request: LLMRequest, start_time: float
-    ) -> LLMResponse:
+    async def _call_anthropic(self, model_id: str, request: LLMRequest, start_time: float) -> LLMResponse:
         import anthropic
 
         client = anthropic.AsyncAnthropic(api_key=settings.anthropic_api_key)
@@ -72,9 +70,7 @@ class DirectAPIProvider(BaseLLMProvider):
             finish_reason=response.stop_reason,
         )
 
-    async def _call_openai(
-        self, model_id: str, request: LLMRequest, start_time: float
-    ) -> LLMResponse:
+    async def _call_openai(self, model_id: str, request: LLMRequest, start_time: float) -> LLMResponse:
         from openai import AsyncOpenAI
 
         client = AsyncOpenAI(api_key=settings.openai_api_key)
@@ -98,21 +94,13 @@ class DirectAPIProvider(BaseLLMProvider):
             finish_reason=choice.finish_reason,
         )
 
-    async def _call_google(
-        self, model_id: str, request: LLMRequest, start_time: float
-    ) -> LLMResponse:
+    async def _call_google(self, model_id: str, request: LLMRequest, start_time: float) -> LLMResponse:
         import vertexai
         from vertexai.generative_models import GenerativeModel
 
-        vertexai.init(
-            project=settings.google_cloud_project, location=settings.gcp_region
-        )
+        vertexai.init(project=settings.google_cloud_project, location=settings.gcp_region)
         gen_model = GenerativeModel(model_id)
-        full_prompt = (
-            f"{request.system_prompt}\n\n{request.prompt}"
-            if request.system_prompt
-            else request.prompt
-        )
+        full_prompt = f"{request.system_prompt}\n\n{request.prompt}" if request.system_prompt else request.prompt
         response = await gen_model.generate_content_async(full_prompt)
         latency_ms = (time.monotonic() - start_time) * 1000
         return LLMResponse(

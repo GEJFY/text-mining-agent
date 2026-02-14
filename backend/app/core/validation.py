@@ -40,12 +40,9 @@ def validate_config() -> None:
     elif mode == "gcp_vertex_ai":
         project = settings.gcp_vertex_ai_project or settings.google_cloud_project
         if not project:
-            errors.append(
-                "GCP_VERTEX_AI_PROJECT or GOOGLE_CLOUD_PROJECT is required for Vertex AI mode"
-            )
-    elif mode == "local":
-        if not settings.local_llm_base_url:
-            warnings.append("LOCAL_LLM_BASE_URL is empty, defaulting to http://localhost:11434")
+            errors.append("GCP_VERTEX_AI_PROJECT or GOOGLE_CLOUD_PROJECT is required for Vertex AI mode")
+    elif mode == "local" and not settings.local_llm_base_url:
+        warnings.append("LOCAL_LLM_BASE_URL is empty, defaulting to http://localhost:11434")
 
     # 警告出力
     for w in warnings:
@@ -64,17 +61,11 @@ def _check_direct_api_keys(warnings: list[str]) -> None:
     """直接APIモードのAPIキー検証"""
     dummy_prefixes = ("sk-ant-xxx", "sk-xxx", "your-")
 
-    if not settings.anthropic_api_key or settings.anthropic_api_key.startswith(
-        tuple(dummy_prefixes)
-    ):
+    if not settings.anthropic_api_key or settings.anthropic_api_key.startswith(tuple(dummy_prefixes)):
         warnings.append("ANTHROPIC_API_KEY is not configured (Claude models will not work)")
 
-    if not settings.openai_api_key or settings.openai_api_key.startswith(
-        tuple(dummy_prefixes)
-    ):
+    if not settings.openai_api_key or settings.openai_api_key.startswith(tuple(dummy_prefixes)):
         warnings.append("OPENAI_API_KEY is not configured (GPT models will not work)")
 
     if not settings.google_cloud_project or settings.google_cloud_project.startswith("your-"):
-        warnings.append(
-            "GOOGLE_CLOUD_PROJECT is not configured (Gemini models will not work)"
-        )
+        warnings.append("GOOGLE_CLOUD_PROJECT is not configured (Gemini models will not work)")

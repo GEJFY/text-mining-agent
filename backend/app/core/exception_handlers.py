@@ -40,9 +40,7 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(RequestValidationError)
-    async def validation_error_handler(
-        request: Request, exc: RequestValidationError
-    ) -> JSONResponse:
+    async def validation_error_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
         """Pydanticバリデーション例外 → 422 Problem Detail"""
         cid = correlation_id_var.get("")
         errors = []

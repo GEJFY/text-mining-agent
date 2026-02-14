@@ -95,8 +95,4 @@ class ModelRegistry:
 
     def get_supported_models(self, deployment_mode: str) -> list[str]:
         """指定プロバイダーでサポートされる論理モデル名一覧"""
-        return [
-            name
-            for name in self._mappings
-            if self.resolve(name, deployment_mode) is not None
-        ]
+        return [name for name in self._mappings if self.resolve(name, deployment_mode) is not None]

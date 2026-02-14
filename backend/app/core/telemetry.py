@@ -39,9 +39,7 @@ def setup_telemetry(app: object) -> None:
             )
             from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
-            tracer_provider.add_span_processor(
-                BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint))
-            )
+            tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
         trace.set_tracer_provider(tracer_provider)
 
         # MeterProvider
@@ -106,9 +104,7 @@ def get_llm_meter():
     return _llm_meter
 
 
-def record_llm_request(
-    *, model: str, provider: str, latency_ms: float, success: bool, tokens: int = 0
-) -> None:
+def record_llm_request(*, model: str, provider: str, latency_ms: float, success: bool, tokens: int = 0) -> None:
     """LLMリクエストのメトリクスを記録"""
     meter = get_llm_meter()
     if meter is None:
@@ -120,21 +116,15 @@ def record_llm_request(
         counter = meter.create_counter("llm.requests.total", description="Total LLM requests")
         counter.add(1, attrs)
 
-        histogram = meter.create_histogram(
-            "llm.request.duration_ms", description="LLM request latency", unit="ms"
-        )
+        histogram = meter.create_histogram("llm.request.duration_ms", description="LLM request latency", unit="ms")
         histogram.record(latency_ms, attrs)
 
         if tokens > 0:
-            token_counter = meter.create_counter(
-                "llm.tokens.total", description="Total tokens consumed"
-            )
+            token_counter = meter.create_counter("llm.tokens.total", description="Total tokens consumed")
             token_counter.add(tokens, attrs)
 
         if not success:
-            err_counter = meter.create_counter(
-                "llm.errors.total", description="Total LLM errors"
-            )
+            err_counter = meter.create_counter("llm.errors.total", description="Total LLM errors")
             err_counter.add(1, attrs)
     except Exception:
         pass

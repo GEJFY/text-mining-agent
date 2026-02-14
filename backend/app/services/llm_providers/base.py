@@ -69,6 +69,5 @@ class BaseLLMProvider(ABC):
         """このプロバイダーが指定された論理モデル名をサポートするか"""
         ...
 
-    async def close(self) -> None:
+    async def close(self) -> None:  # noqa: B027
         """リソースのクリーンアップ (オプショナル)"""
-        pass

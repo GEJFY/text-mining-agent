@@ -71,9 +71,7 @@ class AzureAIFoundryProvider(BaseLLMProvider):
                 model=model_id,
                 provider=self.provider_name,
                 input_tokens=response.usage.prompt_tokens if response.usage else None,
-                output_tokens=(
-                    response.usage.completion_tokens if response.usage else None
-                ),
+                output_tokens=(response.usage.completion_tokens if response.usage else None),
                 latency_ms=latency_ms,
                 finish_reason=choice.finish_reason,
             )

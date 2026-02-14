@@ -78,9 +78,10 @@ class TestRateLimitMiddleware:
     """レート制限ミドルウェアの検証"""
 
     @pytest.mark.asyncio
-    async def test_rate_limit_headers_present(self, client: AsyncClient) -> None:
-        """レート制限ヘッダーが付与されること"""
-        response = await client.get("/api/v1/health")
+    async def test_rate_limit_on_non_health_path(self, client: AsyncClient) -> None:
+        """非ヘルスチェックパスにレート制限ヘッダーが付与されること"""
+        response = await client.get("/api/v1/data/datasets")
+        assert response.status_code == 200
         assert "x-ratelimit-limit" in response.headers
         assert "x-ratelimit-remaining" in response.headers
 

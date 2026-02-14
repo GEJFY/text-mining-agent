@@ -17,8 +17,12 @@ from app.middleware.rate_limit import TokenBucket
 class TestTokenBucket:
     """トークンバケットアルゴリズムの検証"""
 
+    def test_default_tokens_equals_capacity(self) -> None:
+        bucket = TokenBucket(capacity=10.0, refill_rate=1.0)
+        assert bucket.tokens == 10.0
+
     def test_initial_consume_succeeds(self) -> None:
-        bucket = TokenBucket(capacity=10.0, refill_rate=1.0, tokens=10.0)
+        bucket = TokenBucket(capacity=10.0, refill_rate=1.0)
         assert bucket.consume() is True
 
     def test_empty_bucket_fails(self) -> None:

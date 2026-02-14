@@ -19,8 +19,12 @@ class TokenBucket:
 
     capacity: float
     refill_rate: float  # トークン/秒
-    tokens: float = 0.0
+    tokens: float = -1.0  # __post_init__ で capacity に設定
     last_refill: float = field(default_factory=time.monotonic)
+
+    def __post_init__(self) -> None:
+        if self.tokens < 0:
+            self.tokens = self.capacity
 
     def consume(self) -> bool:
         """トークンを1つ消費。成功ならTrue"""
@@ -40,7 +44,16 @@ class TokenBucket:
 
 
 # ヘルスチェック等の除外パス
-EXCLUDED_PATHS = {"/health", "/health/live", "/health/ready", "/docs", "/openapi.json"}
+EXCLUDED_PATHS = {
+    "/health",
+    "/health/live",
+    "/health/ready",
+    "/api/v1/health",
+    "/api/v1/health/live",
+    "/api/v1/health/ready",
+    "/docs",
+    "/openapi.json",
+}
 
 # デフォルト: 60リクエスト/分 (1トークン/秒)
 DEFAULT_CAPACITY = 60

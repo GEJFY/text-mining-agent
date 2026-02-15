@@ -211,7 +211,7 @@ export const reportsApi = {
 /** ダッシュボード関連API */
 export const dashboardApi = {
   /** KPIサマリーを取得 */
-  summary: () => apiClient.get("/health"),
+  summary: () => apiClient.get("/dashboard/summary"),
 
   /** ヘルスチェック */
   ready: () => apiClient.get("/health/ready"),

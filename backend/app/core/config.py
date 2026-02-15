@@ -2,8 +2,12 @@
 
 from enum import Enum
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings
+
+# プロジェクトルート（backend/の親ディレクトリ）の.envを参照
+_ENV_FILE = Path(__file__).resolve().parents[3] / ".env"
 
 
 class CloudProvider(str, Enum):
@@ -122,7 +126,7 @@ class Settings(BaseSettings):
     db_port: int = 5432
     redis_port: int = 6379
 
-    model_config = {"env_file": ".env", "env_prefix": "NEXUSTEXT_", "case_sensitive": False}
+    model_config = {"env_file": str(_ENV_FILE), "env_prefix": "NEXUSTEXT_", "case_sensitive": False}
 
 
 @lru_cache

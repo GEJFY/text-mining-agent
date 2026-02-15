@@ -4,15 +4,20 @@ HTML除去、文字コード正規化、形態素解析、ストップワード�
 各ステップの可視化・カスタマイズに対応。
 """
 
+from __future__ import annotations
+
 import re
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
-from sentence_transformers import SentenceTransformer
 
 from app.core.config import settings
 from app.core.logging import get_logger
+
+if TYPE_CHECKING:
+    from sentence_transformers import SentenceTransformer
 
 logger = get_logger(__name__)
 
@@ -110,6 +115,8 @@ class TextPreprocessor:
     @property
     def embedding_model(self) -> SentenceTransformer:
         if self._embedding_model is None:
+            from sentence_transformers import SentenceTransformer
+
             self._embedding_model = SentenceTransformer(settings.embedding_model)
         return self._embedding_model
 

@@ -22,6 +22,14 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     setup_logging()
     validate_config()
     setup_telemetry(app)
+
+    # データベーステーブル自動作成
+    from app.core.database import engine
+    from app.models.orm import Base
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     yield
 
 

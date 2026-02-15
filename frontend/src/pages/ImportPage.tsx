@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Upload,
   FileSpreadsheet,
@@ -8,11 +9,20 @@ import {
   ChevronDown,
   Eye,
   Loader2,
+  CheckCircle2,
+  XCircle,
+  BarChart3,
+  ArrowRight,
+  Database,
+  Copy,
 } from "lucide-react";
+import { datasetsApi } from "../api/client";
+import { useAnalysisStore } from "../stores/analysisStore";
 
 /**
  * データインポートページ
- * ドラッグ&ドロップ、カラムマッピング、プレビューテーブル
+ * ドラッグ&ドロップ、カラムマッピング、プレビューテーブル、
+ * 実API接続 + インポート結果表示
  */
 
 /** カラムマッピング設定 */
@@ -26,6 +36,16 @@ interface PreviewRow {
   [key: string]: string;
 }
 
+/** インポート結果 */
+interface ImportResult {
+  dataset_id: string;
+  total_rows: number;
+  null_rate: number;
+  char_count_stats: Record<string, number>;
+  unique_values: Record<string, number>;
+  preview: Record<string, unknown>[];
+}
+
 // マッピング先フィールド
 const TARGET_FIELDS = [
   { value: "text", label: "テキスト本文" },
@@ -37,61 +57,22 @@ const TARGET_FIELDS = [
   { value: "ignore", label: "無視する" },
 ];
 
-// サンプルプレビューデータ
-const SAMPLE_COLUMNS = [
-  "id",
-  "投稿日",
-  "投稿者",
-  "テキスト内容",
-  "カテゴリ",
-];
-
-const SAMPLE_PREVIEW: PreviewRow[] = [
-  {
-    id: "001",
-    投稿日: "2024-06-01",
-    投稿者: "ユーザーA",
-    テキスト内容: "製品の使いやすさが向上しました。非常に満足しています。",
-    カテゴリ: "製品レビュー",
-  },
-  {
-    id: "002",
-    投稿日: "2024-06-02",
-    投稿者: "ユーザーB",
-    テキスト内容: "配送に時間がかかりすぎます。改善してください。",
-    カテゴリ: "配送",
-  },
-  {
-    id: "003",
-    投稿日: "2024-06-03",
-    投稿者: "ユーザーC",
-    テキスト内容: "カスタマーサポートの対応が素晴らしかったです。",
-    カテゴリ: "サポート",
-  },
-  {
-    id: "004",
-    投稿日: "2024-06-04",
-    投稿者: "ユーザーD",
-    テキスト内容: "価格に見合った品質だと思います。特に問題なし。",
-    カテゴリ: "製品レビュー",
-  },
-  {
-    id: "005",
-    投稿日: "2024-06-05",
-    投稿者: "ユーザーE",
-    テキスト内容: "アプリのUIが分かりにくい。もっと直感的にしてほしい。",
-    カテゴリ: "UI/UX",
-  },
-];
-
 function ImportPage() {
+  const navigate = useNavigate();
+  const addDataset = useAnalysisStore((s) => s.addDataset);
+  const setActiveDataset = useAnalysisStore((s) => s.setActiveDataset);
+
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [step, setStep] = useState<"upload" | "mapping" | "preview">("upload");
-  const [columns] = useState<string[]>(SAMPLE_COLUMNS);
-  const [previewData] = useState<PreviewRow[]>(SAMPLE_PREVIEW);
+  const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing" | "complete">("upload");
+  const [columns, setColumns] = useState<string[]>([]);
+  const [previewData, setPreviewData] = useState<PreviewRow[]>([]);
+  const [totalRowCount, setTotalRowCount] = useState(0);
   const [mappings, setMappings] = useState<ColumnMapping[]>([]);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ドラッグ&ドロップハンドラ
@@ -120,37 +101,85 @@ function ImportPage() {
     }
   }, []);
 
+  // CSVをクライアント側で解析してプレビュー生成
+  const parseCSVPreview = (text: string): { columns: string[]; rows: PreviewRow[]; totalRows: number } => {
+    const lines = text.split(/\r?\n/).filter((l) => l.trim());
+    if (lines.length === 0) return { columns: [], rows: [], totalRows: 0 };
+
+    // ヘッダー行
+    const headers = lines[0].split(",").map((h) => h.trim().replace(/^"|"$/g, ""));
+    const rows: PreviewRow[] = [];
+
+    for (let i = 1; i < Math.min(lines.length, 6); i++) {
+      const values = lines[i].split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
+      const row: PreviewRow = {};
+      headers.forEach((h, idx) => {
+        row[h] = values[idx] ?? "";
+      });
+      rows.push(row);
+    }
+
+    return { columns: headers, rows, totalRows: lines.length - 1 };
+  };
+
   // ファイル選択ハンドラ
   const handleFileSelect = (file: File) => {
-    const validTypes = [
-      "text/csv",
-      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "application/vnd.ms-excel",
-      "application/json",
-    ];
-    const validExtensions = [".csv", ".xlsx", ".xls", ".json", ".tsv"];
+    const validExtensions = [".csv", ".tsv", ".xlsx", ".xls", ".json", ".jsonl", ".txt", ".pdf", ".docx"];
     const ext = "." + file.name.split(".").pop()?.toLowerCase();
 
-    if (!validTypes.includes(file.type) && !validExtensions.includes(ext)) {
-      alert("対応していないファイル形式です。CSV、Excel、JSON形式のファイルを選択してください。");
+    if (!validExtensions.includes(ext)) {
+      setError("対応していないファイル形式です。CSV、Excel、JSON、PDF、Word、テキスト形式のファイルを選択してください。");
       return;
     }
 
+    setError(null);
     setUploadedFile(file);
-    // 初期カラムマッピングを設定
-    setMappings(
-      SAMPLE_COLUMNS.map((col) => ({
-        sourceColumn: col,
-        targetField: col === "テキスト内容" ? "text" : "ignore",
-      }))
-    );
-
-    // アップロードシミュレーション
     setUploading(true);
-    setTimeout(() => {
-      setUploading(false);
-      setStep("mapping");
-    }, 1500);
+
+    // CSVの場合はクライアント側でプレビュー解析
+    if (ext === ".csv" || ext === ".tsv") {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const text = e.target?.result as string;
+        const { columns: cols, rows, totalRows } = parseCSVPreview(text);
+        setColumns(cols);
+        setPreviewData(rows);
+        setTotalRowCount(totalRows);
+
+        // テキストカラムを自動推定（最も長い文字列のカラム）
+        const autoMappings = cols.map((col) => {
+          const avgLen =
+            rows.reduce((sum, row) => sum + (row[col]?.length ?? 0), 0) / Math.max(rows.length, 1);
+          return { col, avgLen };
+        });
+        const textCol = autoMappings.sort((a, b) => b.avgLen - a.avgLen)[0]?.col;
+
+        setMappings(
+          cols.map((col) => ({
+            sourceColumn: col,
+            targetField: col === textCol ? "text" : "ignore",
+          }))
+        );
+
+        setUploading(false);
+        setStep("mapping");
+      };
+      reader.onerror = () => {
+        setError("ファイルの読み込みに失敗しました。");
+        setUploading(false);
+      };
+      reader.readAsText(file);
+    } else {
+      // CSV以外はプレビューなしでマッピングへ進む
+      setColumns([]);
+      setPreviewData([]);
+      setTotalRowCount(0);
+      setMappings([]);
+      setTimeout(() => {
+        setUploading(false);
+        setStep("mapping");
+      }, 500);
+    }
   };
 
   // ファイル入力クリック
@@ -167,17 +196,66 @@ function ImportPage() {
     );
   };
 
-  // インポート実行
-  const handleImport = () => {
+  // インポート実行（実API呼び出し）
+  const handleImport = async () => {
+    if (!uploadedFile) return;
+
     const textMapping = mappings.find((m) => m.targetField === "text");
-    if (!textMapping) {
-      alert("テキスト本文に対応するカラムを選択してください。");
-      return;
+
+    setStep("importing");
+    setError(null);
+
+    try {
+      const res = await datasetsApi.upload(uploadedFile, {
+        textColumn: textMapping?.sourceColumn,
+      });
+
+      const result: ImportResult = res.data;
+      setImportResult(result);
+
+      // Zustandストアにデータセットを追加
+      addDataset({
+        id: result.dataset_id,
+        name: uploadedFile.name,
+        rowCount: result.total_rows,
+        columnCount: Object.keys(result.preview[0] ?? {}).length,
+        textColumn: textMapping?.sourceColumn ?? "",
+        createdAt: new Date().toISOString(),
+        status: "ready",
+      });
+      setActiveDataset(result.dataset_id);
+
+      setStep("complete");
+    } catch (e: unknown) {
+      const axiosError = e as { response?: { data?: { detail?: string }; status?: number }; message?: string };
+      const detail =
+        axiosError.response?.data?.detail ??
+        axiosError.message ??
+        "インポート中にエラーが発生しました";
+      setError(detail);
+      setStep("preview"); // エラー時はプレビューに戻す
     }
-    // 実際にはAPIにリクエストを送る
-    alert(
-      `インポートを開始します。\nテキストカラム: ${textMapping.sourceColumn}`
-    );
+  };
+
+  // dataset_idをクリップボードにコピー
+  const copyDatasetId = () => {
+    if (importResult?.dataset_id) {
+      navigator.clipboard.writeText(importResult.dataset_id);
+      setCopiedId(true);
+      setTimeout(() => setCopiedId(false), 2000);
+    }
+  };
+
+  // リセットして新規インポート
+  const resetImport = () => {
+    setUploadedFile(null);
+    setStep("upload");
+    setColumns([]);
+    setPreviewData([]);
+    setMappings([]);
+    setImportResult(null);
+    setError(null);
+    setTotalRowCount(0);
   };
 
   // ファイルサイズをフォーマット
@@ -190,6 +268,27 @@ function ImportPage() {
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       {/* ========================================
+          エラー通知バナー
+          ======================================== */}
+      {error && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 animate-in fade-in slide-in-from-top-2">
+          <XCircle size={20} className="text-red-500 flex-shrink-0 mt-0.5" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">
+              エラーが発生しました
+            </p>
+            <p className="text-sm text-red-600 dark:text-red-400 mt-1">{error}</p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600 dark:hover:text-red-300"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* ========================================
           ステップインジケーター
           ======================================== */}
       <div className="flex items-center gap-2">
@@ -197,31 +296,38 @@ function ImportPage() {
           { key: "upload", label: "ファイル選択" },
           { key: "mapping", label: "カラムマッピング" },
           { key: "preview", label: "プレビュー・確認" },
-        ].map((s, index) => (
-          <div key={s.key} className="flex items-center gap-2">
-            <div
-              className={`
-                flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium
-                ${
-                  step === s.key
-                    ? "bg-nexus-600 text-white"
-                    : index <
-                        ["upload", "mapping", "preview"].indexOf(step)
-                      ? "bg-nexus-100 dark:bg-nexus-900 text-nexus-700 dark:text-nexus-300"
-                      : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
-                }
-              `}
-            >
-              <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs bg-white/20">
-                {index + 1}
-              </span>
-              {s.label}
+          { key: "complete", label: "完了" },
+        ].map((s, index) => {
+          const stepOrder = ["upload", "mapping", "preview", "complete"];
+          const currentIdx = stepOrder.indexOf(step === "importing" ? "complete" : step);
+          const isActive = step === s.key || (step === "importing" && s.key === "complete");
+          const isPast = index < currentIdx;
+
+          return (
+            <div key={s.key} className="flex items-center gap-2">
+              <div
+                className={`
+                  flex items-center gap-2 px-3 py-1.5 rounded-full text-sm font-medium transition-all
+                  ${
+                    isActive
+                      ? "bg-nexus-600 text-white"
+                      : isPast
+                        ? "bg-nexus-100 dark:bg-nexus-900 text-nexus-700 dark:text-nexus-300"
+                        : "bg-gray-100 dark:bg-gray-800 text-gray-400 dark:text-gray-500"
+                  }
+                `}
+              >
+                <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs bg-white/20">
+                  {isPast ? <Check size={12} /> : index + 1}
+                </span>
+                {s.label}
+              </div>
+              {index < 3 && (
+                <ChevronDown size={16} className="text-gray-300 dark:text-gray-600 -rotate-90" />
+              )}
             </div>
-            {index < 2 && (
-              <ChevronDown size={16} className="text-gray-300 dark:text-gray-600 -rotate-90" />
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* ========================================
@@ -249,7 +355,7 @@ function ImportPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".csv,.xlsx,.xls,.json,.tsv"
+              accept=".csv,.tsv,.xlsx,.xls,.json,.jsonl,.txt,.pdf,.docx"
               className="hidden"
               onChange={(e) => {
                 const file = e.target.files?.[0];
@@ -279,9 +385,12 @@ function ImportPage() {
                 </div>
                 <div className="flex items-center gap-4 text-xs text-gray-400 dark:text-gray-500">
                   <span>CSV</span>
-                  <span>Excel (.xlsx)</span>
-                  <span>JSON</span>
                   <span>TSV</span>
+                  <span>Excel (.xlsx)</span>
+                  <span>JSON / JSONL</span>
+                  <span>PDF</span>
+                  <span>Word (.docx)</span>
+                  <span>テキスト</span>
                 </div>
               </>
             )}
@@ -307,15 +416,13 @@ function ImportPage() {
                 {uploadedFile.name}
               </p>
               <p className="text-xs text-gray-500 dark:text-gray-400">
-                {formatFileSize(uploadedFile.size)} ・{" "}
-                {columns.length} カラム検出
+                {formatFileSize(uploadedFile.size)}
+                {columns.length > 0 && ` ・ ${columns.length} カラム検出`}
+                {totalRowCount > 0 && ` ・ ${totalRowCount.toLocaleString()} 行`}
               </p>
             </div>
             <button
-              onClick={() => {
-                setUploadedFile(null);
-                setStep("upload");
-              }}
+              onClick={resetImport}
               className="btn-ghost text-gray-400 hover:text-red-500"
             >
               <X size={18} />
@@ -327,100 +434,98 @@ function ImportPage() {
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
               カラムマッピング設定
             </h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-              各カラムの用途を指定してください。「テキスト本文」は必須です。
-            </p>
 
-            <div className="space-y-3">
-              {mappings.map((mapping) => (
-                <div
-                  key={mapping.sourceColumn}
-                  className="flex items-center gap-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
-                >
-                  {/* ソースカラム名 */}
-                  <div className="w-1/3">
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                      {mapping.sourceColumn}
-                    </span>
-                  </div>
+            {columns.length > 0 ? (
+              <>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                  各カラムの用途を指定してください。「テキスト本文」は必須です。
+                </p>
 
-                  {/* 矢印 */}
-                  <ChevronDown
-                    size={16}
-                    className="text-gray-400 -rotate-90 flex-shrink-0"
-                  />
-
-                  {/* マッピング先セレクト */}
-                  <div className="w-1/3">
-                    <select
-                      value={mapping.targetField}
-                      onChange={(e) =>
-                        updateMapping(
-                          mapping.sourceColumn,
-                          e.target.value
-                        )
-                      }
-                      className="input-field text-sm py-1.5"
+                <div className="space-y-3">
+                  {mappings.map((mapping) => (
+                    <div
+                      key={mapping.sourceColumn}
+                      className="flex items-center gap-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
                     >
-                      {TARGET_FIELDS.map((field) => (
-                        <option key={field.value} value={field.value}>
-                          {field.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* ステータスアイコン */}
-                  <div className="flex-shrink-0">
-                    {mapping.targetField === "text" ? (
-                      <Check
-                        size={18}
-                        className="text-emerald-500"
+                      <div className="w-1/3">
+                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                          {mapping.sourceColumn}
+                        </span>
+                      </div>
+                      <ChevronDown
+                        size={16}
+                        className="text-gray-400 -rotate-90 flex-shrink-0"
                       />
-                    ) : mapping.targetField === "ignore" ? (
-                      <AlertTriangle
-                        size={18}
-                        className="text-amber-400"
-                      />
-                    ) : (
-                      <Check size={18} className="text-blue-400" />
-                    )}
-                  </div>
+                      <div className="w-1/3">
+                        <select
+                          value={mapping.targetField}
+                          onChange={(e) =>
+                            updateMapping(mapping.sourceColumn, e.target.value)
+                          }
+                          className="input-field text-sm py-1.5"
+                        >
+                          {TARGET_FIELDS.map((field) => (
+                            <option key={field.value} value={field.value}>
+                              {field.label}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex-shrink-0">
+                        {mapping.targetField === "text" ? (
+                          <Check size={18} className="text-emerald-500" />
+                        ) : mapping.targetField === "ignore" ? (
+                          <AlertTriangle size={18} className="text-amber-400" />
+                        ) : (
+                          <Check size={18} className="text-blue-400" />
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
-              ))}
-            </div>
 
-            {/* テキストカラム警告 */}
-            {!mappings.some((m) => m.targetField === "text") && (
-              <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
-                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
-                  <AlertTriangle size={16} />
-                  <span className="text-sm font-medium">
-                    テキスト本文に対応するカラムを1つ選択してください
-                  </span>
-                </div>
+                {!mappings.some((m) => m.targetField === "text") && (
+                  <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
+                    <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+                      <AlertTriangle size={16} />
+                      <span className="text-sm font-medium">
+                        テキスト本文に対応するカラムを1つ選択してください
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="text-center py-8">
+                <FileSpreadsheet size={40} className="text-gray-300 dark:text-gray-600 mx-auto mb-3" />
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  このファイル形式ではプレビューが表示されません。
+                  <br />
+                  サーバー側でカラムを自動検出します。
+                </p>
               </div>
             )}
 
             {/* ボタン */}
             <div className="flex justify-end gap-3 mt-6">
-              <button
-                onClick={() => {
-                  setUploadedFile(null);
-                  setStep("upload");
-                }}
-                className="btn-secondary"
-              >
+              <button onClick={resetImport} className="btn-secondary">
                 戻る
               </button>
-              <button
-                onClick={() => setStep("preview")}
-                className="btn-primary"
-                disabled={!mappings.some((m) => m.targetField === "text")}
-              >
-                <Eye size={16} />
-                プレビュー
-              </button>
+              {columns.length > 0 ? (
+                <button
+                  onClick={() => setStep("preview")}
+                  className="btn-primary"
+                  disabled={!mappings.some((m) => m.targetField === "text")}
+                >
+                  <Eye size={16} />
+                  プレビュー
+                </button>
+              ) : (
+                <button onClick={handleImport} className="btn-primary">
+                  <Upload size={16} />
+                  インポート実行
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -438,7 +543,7 @@ function ImportPage() {
                 データプレビュー
               </h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                先頭5行のプレビュー ・ 合計 {previewData.length} 行表示中
+                先頭{previewData.length}行のプレビュー ・ 合計 {totalRowCount.toLocaleString()} 行
               </p>
             </div>
 
@@ -461,9 +566,7 @@ function ImportPage() {
                               <span className="badge-positive mt-1 text-xs normal-case">
                                 {
                                   TARGET_FIELDS.find(
-                                    (f) =>
-                                      f.value ===
-                                      mapping.targetField
+                                    (f) => f.value === mapping.targetField
                                   )?.label
                                 }
                               </span>
@@ -539,6 +642,228 @@ function ImportPage() {
               <button onClick={handleImport} className="btn-primary">
                 <Upload size={16} />
                 インポート実行
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================
+          インポート処理中
+          ======================================== */}
+      {step === "importing" && (
+        <div className="card p-12">
+          <div className="flex flex-col items-center justify-center gap-6">
+            <div className="relative">
+              <Loader2 size={64} className="text-nexus-500 animate-spin" />
+              <Database size={24} className="text-nexus-600 absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+            </div>
+            <div className="text-center">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                データをインポート中...
+              </h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
+                {uploadedFile?.name} を処理しています。
+                <br />
+                ファイルサイズによって数秒〜数分かかる場合があります。
+              </p>
+            </div>
+            {/* プログレスバー風のアニメーション */}
+            <div className="w-full max-w-md">
+              <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                <div className="h-full bg-nexus-500 rounded-full animate-pulse" style={{ width: "70%" }} />
+              </div>
+              <div className="flex justify-between text-xs text-gray-400 dark:text-gray-500 mt-2">
+                <span>文字コード検出</span>
+                <span>データ読み込み</span>
+                <span>DB保存</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================
+          ステップ4: インポート完了
+          ======================================== */}
+      {step === "complete" && importResult && (
+        <div className="space-y-4">
+          {/* 成功バナー */}
+          <div className="card p-6 border-l-4 border-l-emerald-500">
+            <div className="flex items-start gap-4">
+              <div className="p-3 rounded-full bg-emerald-50 dark:bg-emerald-950">
+                <CheckCircle2 size={32} className="text-emerald-500" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  インポートが完了しました
+                </h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+                  {uploadedFile?.name} から{" "}
+                  <span className="font-semibold text-gray-900 dark:text-white">
+                    {importResult.total_rows.toLocaleString()} 件
+                  </span>
+                  のレコードをデータベースに保存しました。
+                </p>
+                {/* データセットID */}
+                <div className="flex items-center gap-2 mt-3">
+                  <span className="text-xs text-gray-500 dark:text-gray-400">
+                    データセットID:
+                  </span>
+                  <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded font-mono text-gray-700 dark:text-gray-300">
+                    {importResult.dataset_id}
+                  </code>
+                  <button
+                    onClick={copyDatasetId}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    title="IDをコピー"
+                  >
+                    {copiedId ? (
+                      <Check size={14} className="text-emerald-500" />
+                    ) : (
+                      <Copy size={14} />
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* 統計情報カード */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="card p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">総レコード数</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {importResult.total_rows.toLocaleString()}
+              </p>
+            </div>
+            <div className="card p-4">
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">欠損率</p>
+              <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                {(importResult.null_rate * 100).toFixed(1)}%
+              </p>
+            </div>
+            {importResult.char_count_stats?.mean !== undefined && (
+              <div className="card p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">平均文字数</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {Math.round(importResult.char_count_stats.mean).toLocaleString()}
+                </p>
+              </div>
+            )}
+            {importResult.char_count_stats?.max !== undefined && (
+              <div className="card p-4">
+                <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">最大文字数</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">
+                  {Math.round(importResult.char_count_stats.max).toLocaleString()}
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* プレビューテーブル（API結果） */}
+          {importResult.preview.length > 0 && (
+            <div className="card overflow-hidden">
+              <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                  インポートされたデータ（先頭10件）
+                </h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className="bg-gray-50 dark:bg-gray-800/50">
+                      {Object.keys(importResult.preview[0]).map((col) => (
+                        <th
+                          key={col}
+                          className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
+                        >
+                          {col}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                    {importResult.preview.map((row, rowIdx) => (
+                      <tr key={rowIdx} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                        {Object.values(row).map((val, colIdx) => (
+                          <td
+                            key={colIdx}
+                            className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-xs truncate"
+                          >
+                            {String(val ?? "")}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* アクションボタン */}
+          <div className="card p-6">
+            <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+              次のステップ
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <button
+                onClick={() => navigate("/analysis/cluster")}
+                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-nexus-400 dark:hover:border-nexus-600 hover:bg-nexus-50 dark:hover:bg-nexus-950 transition-all text-left"
+              >
+                <BarChart3 size={20} className="text-indigo-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">クラスタ分析</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">テキストをグループ化</p>
+                </div>
+                <ArrowRight size={16} className="text-gray-400 ml-auto" />
+              </button>
+
+              <button
+                onClick={() => navigate("/analysis/sentiment")}
+                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-nexus-400 dark:hover:border-nexus-600 hover:bg-nexus-50 dark:hover:bg-nexus-950 transition-all text-left"
+              >
+                <BarChart3 size={20} className="text-pink-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">感情分析</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">ポジティブ/ネガティブ判定</p>
+                </div>
+                <ArrowRight size={16} className="text-gray-400 ml-auto" />
+              </button>
+
+              <button
+                onClick={() => navigate("/analysis/cooccurrence")}
+                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-nexus-400 dark:hover:border-nexus-600 hover:bg-nexus-50 dark:hover:bg-nexus-950 transition-all text-left"
+              >
+                <BarChart3 size={20} className="text-green-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">共起ネットワーク</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">キーワード関連を可視化</p>
+                </div>
+                <ArrowRight size={16} className="text-gray-400 ml-auto" />
+              </button>
+
+              <button
+                onClick={() => navigate("/agent")}
+                className="flex items-center gap-3 p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-nexus-400 dark:hover:border-nexus-600 hover:bg-nexus-50 dark:hover:bg-nexus-950 transition-all text-left"
+              >
+                <BarChart3 size={20} className="text-purple-500 flex-shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">AIエージェント</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400">自律的にデータを分析</p>
+                </div>
+                <ArrowRight size={16} className="text-gray-400 ml-auto" />
+              </button>
+            </div>
+
+            <div className="flex justify-between items-center mt-6 pt-4 border-t border-gray-200 dark:border-gray-800">
+              <button
+                onClick={resetImport}
+                className="btn-secondary"
+              >
+                <Upload size={16} />
+                別のファイルをインポート
               </button>
             </div>
           </div>

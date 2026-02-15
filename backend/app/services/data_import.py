@@ -4,9 +4,12 @@ CSV/TSV, Excel, テキスト, PDF, Word, JSON/JSONL対応。
 文字コード自動判定、動的カラムマッピング。
 """
 
+from __future__ import annotations
+
 import io
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import chardet
@@ -14,6 +17,9 @@ import pandas as pd
 
 from app.core.logging import get_logger
 from app.models.schemas import ColumnMapping, ColumnRole, DataImportResponse
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -38,6 +44,7 @@ class DataImportService:
         file_name: str,
         column_mappings: list[ColumnMapping] | None = None,
         encoding: str | None = None,
+        db: AsyncSession | None = None,
     ) -> DataImportResponse:
         """ファイルをインポートしDataFrameに変換"""
         dataset_id = str(uuid4())
@@ -96,6 +103,56 @@ class DataImportService:
         null_rate = float(df.isna().mean().mean())
         unique_values = {col: int(df[col].nunique()) for col in df.columns[:10]}
 
+        # DB永続化
+        if db is not None:
+            from app.models.orm import Dataset as DatasetModel
+            from app.models.orm import TextRecord
+
+            dataset = DatasetModel(
+                id=dataset_id,
+                name=file_name,
+                file_name=file_name,
+                total_rows=len(df),
+                text_column=text_col,
+                encoding=encoding or "utf-8",
+                null_rate=null_rate,
+                char_count_stats=char_count_stats,
+                column_info={"columns": list(df.columns)},
+            )
+            db.add(dataset)
+
+            records = []
+            for idx, row in df.iterrows():
+                text_content = str(row.get(text_col, "")) if text_col else str(row.iloc[0])
+                date_value = None
+                attrs = {}
+                if column_mappings:
+                    for cm in column_mappings:
+                        if cm.role == ColumnRole.DATE and cm.column_name in row.index:
+                            date_value = str(row[cm.column_name])
+                        elif cm.role == ColumnRole.ATTRIBUTE and cm.column_name in row.index:
+                            attrs[cm.column_name] = str(row[cm.column_name])
+                else:
+                    # マッピングなしの場合、テキスト列以外をattributesに保存
+                    for col in df.columns:
+                        if col != text_col:
+                            val = row.get(col)
+                            if pd.notna(val):
+                                attrs[col] = str(val)
+
+                records.append(
+                    TextRecord(
+                        dataset_id=dataset_id,
+                        row_index=int(idx),
+                        text_content=text_content,
+                        date_value=date_value,
+                        attributes=attrs,
+                    )
+                )
+
+            db.add_all(records)
+            await db.flush()
+
         return DataImportResponse(
             dataset_id=dataset_id,
             total_rows=len(df),
@@ -145,6 +202,24 @@ class DataImportService:
             if isinstance(data, list):
                 return pd.DataFrame(data)
             return pd.json_normalize(data)
+
+
+async def get_texts_by_dataset(dataset_id: str, db: AsyncSession) -> tuple[list[str], list[str], list[str | None]]:
+    """データセットからテキスト、レコードID、日付を取得"""
+    from sqlalchemy import select
+
+    from app.models.orm import TextRecord
+
+    result = await db.execute(
+        select(TextRecord).where(TextRecord.dataset_id == dataset_id).order_by(TextRecord.row_index)
+    )
+    records = result.scalars().all()
+
+    texts = [r.text_content for r in records]
+    record_ids = [r.id for r in records]
+    dates = [r.date_value for r in records]
+
+    return texts, record_ids, dates
 
 
 # シングルトン

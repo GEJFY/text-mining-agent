@@ -63,3 +63,22 @@ coverage.xml
 
 # Spec docs (binary)
 *.docx
+
+# Claude Code
+.claude/
+
+# Windows artifacts
+nul
+
+# Backend venv artifacts (OneDrive or local)
+backend/Include/
+backend/Lib/
+backend/Scripts/
+backend/pyvenv.cfg
+backend/venv/
+
+# Ruff
+.ruff_cache/
+
+# Backend test duplicates
+backend/tests/tests/

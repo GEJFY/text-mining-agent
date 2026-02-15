@@ -1,30 +1,53 @@
-"""自律型分析エージェントエンドポイント"""
+"""自律型分析エージェントエンドポイント
 
-from fastapi import APIRouter
+Redis永続化 + DB からテキスト取得。
+"""
 
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.agents.agent_store import agent_store
 from app.agents.analysis_agent import AgentContext, AnalysisAgent
 from app.core.config import HITLMode
+from app.core.database import get_db
 from app.models.schemas import AnalysisRequest
+from app.services.data_import import get_texts_by_dataset
 
 router = APIRouter()
 
-# エージェントインスタンス管理（実運用ではRedis等で永続化）
-_agents: dict[str, AnalysisAgent] = {}
-
 
 @router.post("/start")
-async def start_analysis(request: AnalysisRequest) -> dict:
+async def start_analysis(
+    request: AnalysisRequest,
+    db: AsyncSession = Depends(get_db),
+) -> dict:
     """自律分析を開始"""
+    texts, record_ids, dates = await get_texts_by_dataset(request.dataset_id, db)
+    if not texts:
+        raise HTTPException(status_code=404, detail="Dataset not found or empty")
+
     agent = AnalysisAgent(hitl_mode=HITLMode(request.hitl_mode))
-    _agents[agent.agent_id] = agent
 
     context = AgentContext(
         dataset_id=request.dataset_id,
         objective=request.objective,
-        texts=["サンプル"],  # 実運用ではDB取得
+        texts=texts,
     )
 
     insights = await agent.run(context)
+
+    # Redisに状態を保存
+    await agent_store.save(
+        agent.agent_id,
+        {
+            "state": agent.state.value,
+            "dataset_id": request.dataset_id,
+            "objective": request.objective,
+            "insights": [i.model_dump() for i in insights],
+            "pending_approval": agent.pending_approval,
+            "logs": [log.model_dump() for log in agent.logs],
+        },
+    )
 
     return {
         "agent_id": agent.agent_id,
@@ -39,14 +62,41 @@ async def start_analysis(request: AnalysisRequest) -> dict:
 async def approve_hypotheses(
     agent_id: str,
     approved_hypotheses: list[str],
+    db: AsyncSession = Depends(get_db),
 ) -> dict:
     """HITL: 仮説を承認して分析を再開"""
-    agent = _agents.get(agent_id)
-    if not agent:
-        return {"error": "Agent not found"}
+    saved = await agent_store.load(agent_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
-    context = AgentContext(dataset_id="", objective="", texts=["サンプル"])
+    # データセットからテキストを再取得
+    dataset_id = saved.get("dataset_id", "")
+    texts, _, _ = await get_texts_by_dataset(dataset_id, db)
+    if not texts:
+        raise HTTPException(status_code=404, detail="Dataset not found or empty")
+
+    agent = AnalysisAgent(hitl_mode=HITLMode.SEMI_AUTO)
+    agent.agent_id = agent_id
+
+    context = AgentContext(
+        dataset_id=dataset_id,
+        objective=saved.get("objective", ""),
+        texts=texts,
+    )
     insights = await agent.resume_after_approval(context, approved_hypotheses)
+
+    # Redis更新
+    await agent_store.save(
+        agent_id,
+        {
+            "state": agent.state.value,
+            "dataset_id": dataset_id,
+            "objective": saved.get("objective", ""),
+            "insights": [i.model_dump() for i in insights],
+            "pending_approval": agent.pending_approval,
+            "logs": [log.model_dump() for log in agent.logs],
+        },
+    )
 
     return {
         "agent_id": agent_id,
@@ -59,12 +109,12 @@ async def approve_hypotheses(
 @router.get("/{agent_id}/logs")
 async def get_agent_logs(agent_id: str) -> dict:
     """エージェントのログを取得"""
-    agent = _agents.get(agent_id)
-    if not agent:
-        return {"error": "Agent not found"}
+    saved = await agent_store.load(agent_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Agent not found")
 
     return {
         "agent_id": agent_id,
-        "state": agent.state.value,
-        "logs": [log.model_dump() for log in agent.logs],
+        "state": saved.get("state", "unknown"),
+        "logs": saved.get("logs", []),
     }

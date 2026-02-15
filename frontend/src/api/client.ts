@@ -12,7 +12,7 @@ const API_BASE_URL = "/api/v1";
 // Axiosインスタンスの作成
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 60000, // タイムアウト: 60秒
+  timeout: 120000, // タイムアウト: 120秒（分析処理用）
   headers: {
     "Content-Type": "application/json",
   },
@@ -59,7 +59,6 @@ apiClient.interceptors.response.use(
 
       switch (status) {
         case 401:
-          // 認証エラー: トークンをクリアしてログインへリダイレクト
           console.warn("[API] 認証エラー: トークンが無効です");
           localStorage.removeItem("nexustext-auth-token");
           break;
@@ -97,10 +96,7 @@ apiClient.interceptors.response.use(
 /** データセット関連API */
 export const datasetsApi = {
   /** データセット一覧を取得 */
-  list: () => apiClient.get("/datasets"),
-
-  /** データセット詳細を取得 */
-  get: (id: string) => apiClient.get(`/datasets/${id}`),
+  list: () => apiClient.get("/data/datasets"),
 
   /** データセットをアップロード */
   upload: (file: File, config?: { textColumn?: string }) => {
@@ -109,17 +105,10 @@ export const datasetsApi = {
     if (config?.textColumn) {
       formData.append("text_column", config.textColumn);
     }
-    return apiClient.post("/datasets/upload", formData, {
+    return apiClient.post("/data/import", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
-
-  /** データセットのプレビューを取得 */
-  preview: (id: string, limit?: number) =>
-    apiClient.get(`/datasets/${id}/preview`, { params: { limit: limit ?? 50 } }),
-
-  /** データセットを削除 */
-  delete: (id: string) => apiClient.delete(`/datasets/${id}`),
 };
 
 /** クラスタリング関連API */
@@ -130,27 +119,34 @@ export const clusterApi = {
     n_clusters?: number;
     min_cluster_size?: number;
     epsilon?: number;
-  }) => apiClient.post(`/analysis/cluster/${datasetId}`, params),
+  }) => apiClient.post("/analysis/cluster", {
+    dataset_id: datasetId,
+    ...params,
+  }),
 
-  /** クラスタリング結果を取得 */
-  results: (datasetId: string) =>
-    apiClient.get(`/analysis/cluster/${datasetId}/results`),
+  /** クラスター比較 */
+  compare: (datasetId: string, clusterA: number, clusterB: number) =>
+    apiClient.post("/analysis/cluster/compare", null, {
+      params: { dataset_id: datasetId, cluster_a: clusterA, cluster_b: clusterB },
+    }),
 };
 
 /** センチメント分析関連API */
 export const sentimentApi = {
   /** センチメント分析を実行 */
-  run: (datasetId: string, params: {
-    axes?: Array<{ positive: string; negative: string }>;
-  }) => apiClient.post(`/analysis/sentiment/${datasetId}`, params),
+  run: (datasetId: string, params?: {
+    mode?: string;
+    custom_axes?: Array<{ name: string; description: string }>;
+  }) => apiClient.post("/analysis/sentiment", {
+    dataset_id: datasetId,
+    ...params,
+  }),
 
   /** コスト見積もりを取得 */
   estimate: (datasetId: string) =>
-    apiClient.get(`/analysis/sentiment/${datasetId}/estimate`),
-
-  /** センチメント結果を取得 */
-  results: (datasetId: string) =>
-    apiClient.get(`/analysis/sentiment/${datasetId}/results`),
+    apiClient.post("/analysis/sentiment/estimate", {
+      dataset_id: datasetId,
+    }),
 };
 
 /** 共起ネットワーク関連API */
@@ -159,41 +155,50 @@ export const cooccurrenceApi = {
   run: (datasetId: string, params?: {
     min_frequency?: number;
     window_size?: number;
-  }) => apiClient.post(`/analysis/cooccurrence/${datasetId}`, params),
+  }) => apiClient.post("/analysis/cooccurrence", {
+    dataset_id: datasetId,
+    ...params,
+  }),
 
-  /** 共起ネットワーク結果を取得 */
-  results: (datasetId: string) =>
-    apiClient.get(`/analysis/cooccurrence/${datasetId}/results`),
+  /** 時間スライス分析 */
+  timeslice: (datasetId: string, params?: {
+    min_frequency?: number;
+    window_size?: number;
+    time_interval?: string;
+  }) => apiClient.post("/analysis/cooccurrence/timeslice", {
+    dataset_id: datasetId,
+    time_slice: true,
+    ...params,
+  }),
 };
 
 /** AIエージェント関連API */
 export const agentApi = {
   /** エージェント分析を開始 */
-  start: (datasetId: string, query?: string) =>
-    apiClient.post(`/agent/start`, { dataset_id: datasetId, query }),
-
-  /** エージェントの状態を取得 */
-  status: () => apiClient.get("/agent/status"),
+  start: (datasetId: string, objective?: string) =>
+    apiClient.post("/agent/start", {
+      dataset_id: datasetId,
+      objective: objective ?? "",
+    }),
 
   /** HITL承認を送信 */
-  approve: (insightId: string, approved: boolean) =>
-    apiClient.post(`/agent/approve`, { insight_id: insightId, approved }),
+  approve: (agentId: string, approvedHypotheses: string[]) =>
+    apiClient.post(`/agent/${agentId}/approve`, null, {
+      params: { approved_hypotheses: approvedHypotheses },
+    }),
 
-  /** エージェントを停止 */
-  stop: () => apiClient.post("/agent/stop"),
+  /** エージェントのログを取得 */
+  logs: (agentId: string) => apiClient.get(`/agent/${agentId}/logs`),
 };
 
 /** レポート関連API */
 export const reportsApi = {
-  /** レポートテンプレート一覧を取得 */
-  templates: () => apiClient.get("/reports/templates"),
-
   /** レポートを生成 */
   generate: (params: {
     dataset_id: string;
-    template_id: string;
-    format: "pdf" | "html" | "docx" | "pptx";
-    sections?: string[];
+    template?: string;
+    output_format?: string;
+    custom_prompt?: string;
   }) => apiClient.post("/reports/generate", params),
 
   /** レポートをダウンロード */
@@ -206,10 +211,19 @@ export const reportsApi = {
 /** ダッシュボード関連API */
 export const dashboardApi = {
   /** KPIサマリーを取得 */
-  summary: () => apiClient.get("/dashboard/summary"),
+  summary: () => apiClient.get("/health"),
 
-  /** 最近のアクティビティを取得 */
-  activity: () => apiClient.get("/dashboard/activity"),
+  /** ヘルスチェック */
+  ready: () => apiClient.get("/health/ready"),
+};
+
+/** 類似検索API */
+export const similarityApi = {
+  /** テキスト類似性検索 */
+  search: (datasetId: string, query: string, topK?: number) =>
+    apiClient.post("/analysis/similarity/search", null, {
+      params: { dataset_id: datasetId, query, top_k: topK ?? 10 },
+    }),
 };
 
 export default apiClient;

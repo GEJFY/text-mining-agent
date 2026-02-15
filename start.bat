@@ -10,13 +10,19 @@ REM --- Port settings (change if port conflicts) ---
 set BACKEND_PORT=8002
 set FRONTEND_PORT=5173
 
-REM --- Pre-flight checks ---
-if not exist "backend\venv\Scripts\python.exe" (
+REM --- Virtual environment path ---
+REM OneDrive外のvenvを優先（パフォーマンス向上）
+if exist "C:\temp\text-mining-venv\Scripts\python.exe" (
+    set VENV_PATH=C:\temp\text-mining-venv
+) else if exist "backend\venv\Scripts\python.exe" (
+    set VENV_PATH=%~dp0backend\venv
+) else (
     echo [ERROR] Backend venv not found.
-    echo         Run setup.bat first.
+    echo         Run setup.bat first, or create venv at C:\temp\text-mining-venv
     pause
     exit /b 1
 )
+echo Using venv: %VENV_PATH%
 
 if not exist "frontend\node_modules" (
     echo [ERROR] Frontend node_modules not found.
@@ -27,7 +33,7 @@ if not exist "frontend\node_modules" (
 
 REM --- Start backend (new window) ---
 echo [1/2] Starting backend... (http://localhost:%BACKEND_PORT%)
-start "NexusText-Backend" cmd /k "cd /d %~dp0backend && call venv\Scripts\activate.bat && echo. && echo === NexusText AI Backend === && echo http://localhost:%BACKEND_PORT% && echo API Docs: http://localhost:%BACKEND_PORT%/docs && echo. && uvicorn app.main:app --reload --host 0.0.0.0 --port %BACKEND_PORT%"
+start "NexusText-Backend" cmd /k "cd /d %~dp0backend && call %VENV_PATH%\Scripts\activate.bat && echo. && echo === NexusText AI Backend === && echo http://localhost:%BACKEND_PORT% && echo API Docs: http://localhost:%BACKEND_PORT%/docs && echo. && uvicorn app.main:app --reload --host 127.0.0.1 --port %BACKEND_PORT%"
 
 REM --- Wait for backend ---
 timeout /t 3 /nobreak >nul

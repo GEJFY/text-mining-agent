@@ -84,16 +84,17 @@ class LLMOrchestrator:
     _model_registry: ModelRegistry = field(default_factory=ModelRegistry)
 
     # タスク種別→優先モデル（論理名）のマッピング
+    # タスク種別→優先モデル: Azure AI Foundry デプロイ済みモデルを最優先
     TASK_MODEL_MAP: dict[TaskType, list[str]] = field(
         default_factory=lambda: {
-            TaskType.LABELING: ["claude-opus-4-6", "gpt-5.1-chat", "gemini-3.0-pro"],
-            TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.1-chat"],
-            TaskType.BATCH_CLASSIFICATION: ["claude-sonnet-4-5-20250929", "gpt-5-nano", "gemini-3.0-flash"],
-            TaskType.PII_DETECTION: ["gpt-5-nano", "claude-sonnet-4-5-20250929"],
-            TaskType.TRANSLATION: ["gpt-5.1-chat", "claude-opus-4-6", "gemini-3.0-pro"],
-            TaskType.VISION: ["gemini-3.0-pro", "gpt-5.1-chat", "claude-opus-4-6"],
-            TaskType.CONFIDENTIAL: ["llama-4-405b"],
-            TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-nano"],
+            TaskType.LABELING: ["gpt-5.1-chat", "gpt-5-nano"],
+            TaskType.SUMMARIZATION: ["gpt-5.1-chat", "gpt-5-nano"],
+            TaskType.BATCH_CLASSIFICATION: ["gpt-5-nano", "gpt-5.1-chat"],
+            TaskType.PII_DETECTION: ["gpt-5-nano"],
+            TaskType.TRANSLATION: ["gpt-5.1-chat", "gpt-5-nano"],
+            TaskType.VISION: ["gpt-5.1-chat"],
+            TaskType.CONFIDENTIAL: ["gpt-5-nano"],
+            TaskType.CHAT: ["gpt-5-nano", "gpt-5.1-chat"],
         }
     )
 
@@ -103,11 +104,12 @@ class LLMOrchestrator:
         sensitivity: DataSensitivity = DataSensitivity.INTERNAL,
     ) -> str:
         """タスク種別と機密度に基づいて論理モデル名を選択"""
-        # 機密データはローカルモデルを強制
+        # 機密データはCONFIDENTIALタスクのモデルチェーンを使用
         if sensitivity == DataSensitivity.RESTRICTED:
-            return "llama-4-405b"
+            candidates = self.TASK_MODEL_MAP.get(TaskType.CONFIDENTIAL, ["gpt-5-nano"])
+            return candidates[0]
 
-        candidates = self.TASK_MODEL_MAP.get(task_type, ["claude-sonnet-4-5-20250929"])
+        candidates = self.TASK_MODEL_MAP.get(task_type, ["gpt-5-nano"])
 
         for model in candidates:
             cb = self.circuit_breakers.get(model)

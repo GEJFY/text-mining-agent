@@ -44,15 +44,20 @@ DEFAULT_MODEL_MAPPINGS: dict[str, ModelMapping] = {
         direct="gpt-5-mini",
         azure="gpt-5-mini",
     ),
+    "gpt-5-nano": ModelMapping(
+        logical_name="gpt-5-nano",
+        direct="gpt-5-nano",
+        azure="gpt-5-nano",
+    ),
     "gemini-3.0-pro": ModelMapping(
         logical_name="gemini-3.0-pro",
         direct="gemini-3.0-pro",
-        vertex_ai="gemini-3.0-pro",
+        vertex_ai="gemini-3-pro-preview",
     ),
     "gemini-3.0-flash": ModelMapping(
         logical_name="gemini-3.0-flash",
         direct="gemini-3.0-flash",
-        vertex_ai="gemini-3.0-flash",
+        vertex_ai="gemini-3-flash-preview",
     ),
     "llama-4-405b": ModelMapping(
         logical_name="llama-4-405b",

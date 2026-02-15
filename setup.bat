@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 echo ========================================
 echo  NexusText AI v7.0 - Initial Setup
 echo ========================================
@@ -32,10 +33,10 @@ if not exist "venv\Scripts\python.exe" (
         if exist "venv" rd /s /q "venv"
     )
     REM Create venv outside OneDrive
-    echo       Creating venv at %VENV_EXTERNAL% (outside OneDrive)...
+    echo       Creating venv at %VENV_EXTERNAL% ^(outside OneDrive^)...
     if exist "%VENV_EXTERNAL%" rd /s /q "%VENV_EXTERNAL%"
     python -m venv "%VENV_EXTERNAL%"
-    if %ERRORLEVEL% NEQ 0 (
+    if !ERRORLEVEL! NEQ 0 (
         echo       [ERROR] Failed to create venv.
         echo       Make sure Python 3.11+ is installed and on PATH.
         pause
@@ -43,7 +44,7 @@ if not exist "venv\Scripts\python.exe" (
     )
     REM Create junction link
     mklink /J "venv" "%VENV_EXTERNAL%"
-    if %ERRORLEVEL% NEQ 0 (
+    if !ERRORLEVEL! NEQ 0 (
         echo       [WARNING] Could not create junction link.
         echo       Falling back to local venv...
         python -m venv venv
@@ -54,12 +55,12 @@ if not exist "venv\Scripts\python.exe" (
 )
 
 echo [3/4] Installing backend dependencies...
-echo       *** This takes 10-20 minutes on first run (PyTorch, spaCy, etc.) ***
+echo       *** This takes 10-20 minutes on first run ^(PyTorch, spaCy, etc.^) ***
 echo       *** Please wait - progress will show below ***
 echo.
 call venv\Scripts\activate.bat
 pip install -e ".[dev]"
-if %ERRORLEVEL% NEQ 0 (
+if !ERRORLEVEL! NEQ 0 (
     echo       [ERROR] pip install failed.
     echo       Make sure Python 3.11+ is installed.
     call deactivate
@@ -75,7 +76,7 @@ REM --- Frontend setup ---
 echo [4/4] Installing frontend dependencies...
 cd frontend
 call npm install --no-audit --no-fund
-if %ERRORLEVEL% NEQ 0 (
+if !ERRORLEVEL! NEQ 0 (
     echo       [ERROR] npm install failed.
     echo       Make sure Node.js 20+ is installed.
     pause
@@ -93,4 +94,5 @@ echo  Next steps:
 echo    1. Edit .env file (set LLM API keys)
 echo    2. Run start.bat to launch the app
 echo.
+endlocal
 pause

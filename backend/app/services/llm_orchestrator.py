@@ -88,12 +88,12 @@ class LLMOrchestrator:
         default_factory=lambda: {
             TaskType.LABELING: ["claude-opus-4-6", "gpt-5.2", "gemini-3.0-pro"],
             TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.2"],
-            TaskType.BATCH_CLASSIFICATION: ["claude-sonnet-4-5-20250929", "gpt-5-mini", "gemini-3.0-flash"],
-            TaskType.PII_DETECTION: ["gpt-5-mini", "claude-sonnet-4-5-20250929"],
+            TaskType.BATCH_CLASSIFICATION: ["claude-sonnet-4-5-20250929", "gpt-5-nano", "gemini-3.0-flash"],
+            TaskType.PII_DETECTION: ["gpt-5-nano", "claude-sonnet-4-5-20250929"],
             TaskType.TRANSLATION: ["gpt-5.2", "claude-opus-4-6", "gemini-3.0-pro"],
             TaskType.VISION: ["gemini-3.0-pro", "gpt-5.2", "claude-opus-4-6"],
             TaskType.CONFIDENTIAL: ["llama-4-405b"],
-            TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-mini"],
+            TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-nano"],
         }
     )
 

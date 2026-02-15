@@ -29,27 +29,19 @@ async def dashboard_summary(db: AsyncSession = Depends(get_db)) -> dict:
     jobs_by_type = {row[0]: row[1] for row in jobs_result.all()}
 
     # 最近のアクティビティ（直近10件）
-    recent_result = await db.execute(
-        select(AnalysisJob)
-        .order_by(AnalysisJob.created_at.desc())
-        .limit(10)
-    )
+    recent_result = await db.execute(select(AnalysisJob).order_by(AnalysisJob.created_at.desc()).limit(10))
     recent_jobs = recent_result.scalars().all()
 
     # データセットID→名前のマッピング
     if recent_jobs:
         ds_ids = list({j.dataset_id for j in recent_jobs})
-        ds_result = await db.execute(
-            select(Dataset.id, Dataset.name).where(Dataset.id.in_(ds_ids))
-        )
+        ds_result = await db.execute(select(Dataset.id, Dataset.name).where(Dataset.id.in_(ds_ids)))
         ds_names = {row[0]: row[1] for row in ds_result.all()}
     else:
         ds_names = {}
 
     # データセット一覧（直近5件）
-    ds_list_result = await db.execute(
-        select(Dataset).order_by(Dataset.created_at.desc()).limit(5)
-    )
+    ds_list_result = await db.execute(select(Dataset).order_by(Dataset.created_at.desc()).limit(5))
     recent_datasets = ds_list_result.scalars().all()
 
     return {

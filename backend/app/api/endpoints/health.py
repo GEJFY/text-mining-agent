@@ -75,17 +75,11 @@ async def readiness() -> dict:
 
         # 利用可能モデル一覧
         registry = ModelRegistry()
-        checks["llm_available_models"] = registry.get_supported_models(
-            settings.llm_deployment_mode
-        )
+        checks["llm_available_models"] = registry.get_supported_models(settings.llm_deployment_mode)
     except Exception as e:
         checks["llm_provider"] = f"error: {e}"
 
-    all_ok = all(
-        v == "ok"
-        for k, v in checks.items()
-        if k not in ("llm_provider_name", "llm_available_models")
-    )
+    all_ok = all(v == "ok" for k, v in checks.items() if k not in ("llm_provider_name", "llm_available_models"))
     status = "ready" if all_ok else "degraded"
 
     return {

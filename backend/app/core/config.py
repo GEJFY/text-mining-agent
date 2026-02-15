@@ -64,7 +64,7 @@ class Settings(BaseSettings):
     primary_model: str = "claude-opus-4-6"
     secondary_model: str = "claude-sonnet-4-5-20250929"
     pii_detection_model: str = "gpt-5-nano"
-    multilingual_model: str = "gpt-5.2"
+    multilingual_model: str = "gpt-5.1-chat"
     vision_model: str = "gemini-3.0-pro"
     local_model: str = "llama-4-405b"
 

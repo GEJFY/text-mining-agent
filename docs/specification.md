@@ -88,7 +88,7 @@ NexusText AI は、大量のテキストデータに対して自律的にクラ�
               v                        v                        v
    +------------------+   +------------------+   +------------------+
    | Anthropic API    |   | OpenAI API       |   | Google Vertex AI |
-   | claude-opus-4-6  |   | gpt-5.2          |   | gemini-3.0-pro   |
+   | claude-opus-4-6  |   | gpt-5.1-chat          |   | gemini-3.0-pro   |
    | claude-sonnet-4  |   | gpt-5-mini       |   | gemini-3.0-flash |
    +------------------+   +------------------+   +------------------+
               |
@@ -139,7 +139,7 @@ NexusText AI は、大量のテキストデータに対して自律的にクラ�
 | プロバイダー | SDK | モデル |
 |---|---|---|
 | Anthropic | anthropic (AsyncAnthropic) | claude-opus-4-6, claude-sonnet-4-5-20250929 |
-| OpenAI | openai (AsyncOpenAI) | gpt-5.2, gpt-5-mini |
+| OpenAI | openai (AsyncOpenAI) | gpt-5.1-chat, gpt-5-mini |
 | Google | vertexai (GenerativeModel) | gemini-3.0-pro, gemini-3.0-flash |
 | ローカル | httpx (Ollama/vLLM互換) | llama-4-405b |
 
@@ -1073,7 +1073,7 @@ LLMタスク種別。
 | `"summarization"` | レポート生成・要約 | claude-opus-4-6 |
 | `"batch_classification"` | 感情分析バッチ処理 | claude-sonnet-4-5-20250929 |
 | `"pii_detection"` | PII検知 | gpt-5-mini |
-| `"translation"` | 多言語翻訳 | gpt-5.2 |
+| `"translation"` | 多言語翻訳 | gpt-5.1-chat |
 | `"vision"` | 画像読取 | gemini-3.0-pro |
 | `"confidential"` | 機密データ処理 | llama-4-405b (ローカル) |
 | `"chat"` | 対話応答 | claude-sonnet-4-5-20250929 |
@@ -1410,12 +1410,12 @@ class AgentContext:
 
 | タスク種別 | 第1候補 | 第2候補 | 第3候補 |
 |---|---|---|---|
-| `labeling` | claude-opus-4-6 | gpt-5.2 | gemini-3.0-pro |
-| `summarization` | claude-opus-4-6 | gemini-3.0-pro | gpt-5.2 |
+| `labeling` | claude-opus-4-6 | gpt-5.1-chat | gemini-3.0-pro |
+| `summarization` | claude-opus-4-6 | gemini-3.0-pro | gpt-5.1-chat |
 | `batch_classification` | claude-sonnet-4-5-20250929 | gpt-5-mini | gemini-3.0-flash |
 | `pii_detection` | gpt-5-mini | claude-sonnet-4-5-20250929 | - |
-| `translation` | gpt-5.2 | claude-opus-4-6 | gemini-3.0-pro |
-| `vision` | gemini-3.0-pro | gpt-5.2 | claude-opus-4-6 |
+| `translation` | gpt-5.1-chat | claude-opus-4-6 | gemini-3.0-pro |
+| `vision` | gemini-3.0-pro | gpt-5.1-chat | claude-opus-4-6 |
 | `confidential` | llama-4-405b | - | - |
 | `chat` | claude-sonnet-4-5-20250929 | gpt-5-mini | - |
 
@@ -1768,7 +1768,7 @@ def get_api_gateway() -> BaseAPIGateway:
 | `primary_model` | `NEXUSTEXT_PRIMARY_MODEL` | `str` | `"claude-opus-4-6"` |
 | `secondary_model` | `NEXUSTEXT_SECONDARY_MODEL` | `str` | `"claude-sonnet-4-5-20250929"` |
 | `pii_detection_model` | `NEXUSTEXT_PII_DETECTION_MODEL` | `str` | `"gpt-5-mini"` |
-| `multilingual_model` | `NEXUSTEXT_MULTILINGUAL_MODEL` | `str` | `"gpt-5.2"` |
+| `multilingual_model` | `NEXUSTEXT_MULTILINGUAL_MODEL` | `str` | `"gpt-5.1-chat"` |
 | `vision_model` | `NEXUSTEXT_VISION_MODEL` | `str` | `"gemini-3.0-pro"` |
 | `local_model` | `NEXUSTEXT_LOCAL_MODEL` | `str` | `"llama-4-405b"` |
 | `secret_key` | `NEXUSTEXT_SECRET_KEY` | `str` | `"change-me-in-production"` |

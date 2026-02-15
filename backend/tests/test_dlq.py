@@ -42,7 +42,7 @@ class TestDeadLetterQueue:
     @pytest.mark.asyncio
     async def test_dequeue(self, dlq: DeadLetterQueue) -> None:
         """dequeue が Redis rpop からJSONパースされること"""
-        entry = {"model": "gpt-5.2", "prompt": "test", "task_type": "summarization"}
+        entry = {"model": "gpt-5.1-chat", "prompt": "test", "task_type": "summarization"}
         mock_redis = AsyncMock()
         mock_redis.rpop = AsyncMock(return_value=json.dumps(entry))
 
@@ -50,7 +50,7 @@ class TestDeadLetterQueue:
             result = await dlq.dequeue()
 
         assert result is not None
-        assert result["model"] == "gpt-5.2"
+        assert result["model"] == "gpt-5.1-chat"
 
     @pytest.mark.asyncio
     async def test_dequeue_empty(self, dlq: DeadLetterQueue) -> None:

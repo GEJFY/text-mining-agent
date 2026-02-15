@@ -18,13 +18,13 @@ class TestModelRegistry:
 
     def test_resolve_azure_mode(self) -> None:
         registry = ModelRegistry()
-        result = registry.resolve("gpt-5.2", "azure_ai_foundry")
-        assert result == "gpt-5-2"
+        result = registry.resolve("gpt-5.1-chat", "azure_ai_foundry")
+        assert result == "gpt-51-chat"
 
     def test_resolve_vertex_ai_mode(self) -> None:
         registry = ModelRegistry()
         result = registry.resolve("gemini-3.0-pro", "gcp_vertex_ai")
-        assert result == "gemini-3.0-pro"
+        assert result == "gemini-3-pro-preview"
 
     def test_resolve_local_mode(self) -> None:
         registry = ModelRegistry()
@@ -39,7 +39,7 @@ class TestModelRegistry:
     def test_resolve_model_not_available_in_mode(self) -> None:
         """GPTモデルはBedrockでは利用不可"""
         registry = ModelRegistry()
-        result = registry.resolve("gpt-5.2", "aws_bedrock")
+        result = registry.resolve("gpt-5.1-chat", "aws_bedrock")
         assert result is None
 
     def test_resolve_unknown_mode_returns_none(self) -> None:
@@ -55,7 +55,7 @@ class TestGetSupportedModels:
         registry = ModelRegistry()
         models = registry.get_supported_models("direct")
         assert "claude-opus-4-6" in models
-        assert "gpt-5.2" in models
+        assert "gpt-5.1-chat" in models
         assert "gemini-3.0-pro" in models
 
     def test_local_mode_supports_limited_models(self) -> None:

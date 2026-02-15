@@ -45,7 +45,7 @@ class TestLLMResponse:
     def test_optional_fields(self) -> None:
         resp = LLMResponse(
             content="Result",
-            model="gpt-5.2",
+            model="gpt-5.1-chat",
             provider="azure",
             input_tokens=100,
             output_tokens=50,
@@ -83,7 +83,7 @@ class TestLLMProviderError:
         original = Exception("429 Too Many Requests")
         err = LLMProviderError(
             provider="azure",
-            model_id="gpt-5.2",
+            model_id="gpt-5.1-chat",
             original_error=original,
         )
         assert err.is_rate_limit is True
@@ -127,10 +127,10 @@ class TestModelNotAvailableError:
 
     def test_error_message(self) -> None:
         err = ModelNotAvailableError(
-            logical_model="gpt-5.2",
+            logical_model="gpt-5.1-chat",
             deployment_mode="aws_bedrock",
         )
-        assert "gpt-5.2" in str(err)
+        assert "gpt-5.1-chat" in str(err)
         assert "aws_bedrock" in str(err)
 
     def test_not_retryable(self) -> None:

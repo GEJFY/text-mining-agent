@@ -34,10 +34,10 @@ DEFAULT_MODEL_MAPPINGS: dict[str, ModelMapping] = {
         azure="claude-sonnet-4-5-20250929",
         vertex_ai="claude-sonnet-4-5-20250929@20250929",
     ),
-    "gpt-5.2": ModelMapping(
-        logical_name="gpt-5.2",
-        direct="gpt-5.2",
-        azure="gpt-5-2",
+    "gpt-5.1-chat": ModelMapping(
+        logical_name="gpt-5.1-chat",
+        direct="gpt-5.1-chat",
+        azure="gpt-51-chat",
     ),
     "gpt-5-mini": ModelMapping(
         logical_name="gpt-5-mini",

@@ -86,12 +86,12 @@ class LLMOrchestrator:
     # タスク種別→優先モデル（論理名）のマッピング
     TASK_MODEL_MAP: dict[TaskType, list[str]] = field(
         default_factory=lambda: {
-            TaskType.LABELING: ["claude-opus-4-6", "gpt-5.2", "gemini-3.0-pro"],
-            TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.2"],
+            TaskType.LABELING: ["claude-opus-4-6", "gpt-5.1-chat", "gemini-3.0-pro"],
+            TaskType.SUMMARIZATION: ["claude-opus-4-6", "gemini-3.0-pro", "gpt-5.1-chat"],
             TaskType.BATCH_CLASSIFICATION: ["claude-sonnet-4-5-20250929", "gpt-5-nano", "gemini-3.0-flash"],
             TaskType.PII_DETECTION: ["gpt-5-nano", "claude-sonnet-4-5-20250929"],
-            TaskType.TRANSLATION: ["gpt-5.2", "claude-opus-4-6", "gemini-3.0-pro"],
-            TaskType.VISION: ["gemini-3.0-pro", "gpt-5.2", "claude-opus-4-6"],
+            TaskType.TRANSLATION: ["gpt-5.1-chat", "claude-opus-4-6", "gemini-3.0-pro"],
+            TaskType.VISION: ["gemini-3.0-pro", "gpt-5.1-chat", "claude-opus-4-6"],
             TaskType.CONFIDENTIAL: ["llama-4-405b"],
             TaskType.CHAT: ["claude-sonnet-4-5-20250929", "gpt-5-nano"],
         }

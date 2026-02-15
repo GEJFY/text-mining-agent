@@ -711,7 +711,7 @@ NEXUSTEXT_GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 NEXUSTEXT_PRIMARY_MODEL=claude-opus-4-6
 NEXUSTEXT_SECONDARY_MODEL=claude-sonnet-4-5-20250929
 NEXUSTEXT_PII_DETECTION_MODEL=gpt-5-mini
-NEXUSTEXT_MULTILINGUAL_MODEL=gpt-5.2
+NEXUSTEXT_MULTILINGUAL_MODEL=gpt-5.1-chat
 NEXUSTEXT_VISION_MODEL=gemini-3.0-pro
 NEXUSTEXT_LOCAL_MODEL=llama-4-405b
 
@@ -1248,7 +1248,7 @@ NexusText AI で使用するすべての環境変数の一覧です。すべて�
 | `NEXUSTEXT_PRIMARY_MODEL` | 文字列 | `claude-opus-4-6` | いいえ | メインのLLMモデル。高品質な分析・推論に使用 |
 | `NEXUSTEXT_SECONDARY_MODEL` | 文字列 | `claude-sonnet-4-5-20250929` | いいえ | セカンダリモデル。コスト効率が必要な処理に使用 |
 | `NEXUSTEXT_PII_DETECTION_MODEL` | 文字列 | `gpt-5-mini` | いいえ | 個人情報検出モデル |
-| `NEXUSTEXT_MULTILINGUAL_MODEL` | 文字列 | `gpt-5.2` | いいえ | 多言語処理モデル |
+| `NEXUSTEXT_MULTILINGUAL_MODEL` | 文字列 | `gpt-5.1-chat` | いいえ | 多言語処理モデル |
 | `NEXUSTEXT_VISION_MODEL` | 文字列 | `gemini-3.0-pro` | いいえ | 画像解析モデル |
 | `NEXUSTEXT_LOCAL_MODEL` | 文字列 | `llama-4-405b` | いいえ | ローカル実行モデル（Ollama/vLLM経由） |
 

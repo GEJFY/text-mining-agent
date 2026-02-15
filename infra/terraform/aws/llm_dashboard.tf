@@ -22,7 +22,7 @@ resource "aws_cloudwatch_dashboard" "llm_metrics" {
           metrics = [
             ["NexusText/LLM", "RequestCount", "Model", "claude-opus-4-6", { stat = "Sum" }],
             ["NexusText/LLM", "RequestCount", "Model", "claude-sonnet-4-5", { stat = "Sum" }],
-            ["NexusText/LLM", "RequestCount", "Model", "gpt-5.2", { stat = "Sum" }],
+            ["NexusText/LLM", "RequestCount", "Model", "gpt-5.1-chat", { stat = "Sum" }],
             ["NexusText/LLM", "RequestCount", "Model", "gemini-3.0-pro", { stat = "Sum" }]
           ]
           period = 300

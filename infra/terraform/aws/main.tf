@@ -211,6 +211,40 @@ module "eks" {
     }
   }
 
+  # GPU ノードグループ（オプション: LLM推論用）
+  eks_managed_node_groups_extra = var.enable_gpu_nodes ? {
+    gpu = {
+      name           = "${var.cluster_name}-gpu"
+      instance_types = [var.gpu_instance_type]
+      capacity_type  = "ON_DEMAND"
+      min_size       = var.gpu_node_min_count
+      max_size       = var.gpu_node_max_count
+      desired_size   = var.gpu_node_desired_count
+      disk_size      = 200
+      disk_type      = "gp3"
+      ami_type       = "AL2_x86_64_GPU"
+
+      labels = {
+        role                         = "gpu"
+        "nvidia.com/gpu.present"     = "true"
+        "nexustext.ai/llm-inference" = "true"
+      }
+
+      taints = {
+        gpu = {
+          key    = "nvidia.com/gpu"
+          value  = "true"
+          effect = "NO_SCHEDULE"
+        }
+      }
+
+      tags = {
+        "k8s.io/cluster-autoscaler/enabled"            = "true"
+        "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
+      }
+    }
+  } : {}
+
   # OIDC プロバイダー（IRSA 用）
   enable_irsa = true
 

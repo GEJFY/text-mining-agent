@@ -10,18 +10,9 @@ import io
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from httpx import ASGITransport, AsyncClient
+from httpx import AsyncClient
 
-from app.main import app
 from app.models.schemas import DataImportResponse
-
-
-@pytest.fixture
-async def client() -> AsyncClient:
-    """テスト用 httpx AsyncClient を生成"""
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
-        yield ac
 
 
 # =============================================================================

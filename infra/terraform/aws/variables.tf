@@ -100,6 +100,39 @@ variable "use_spot_instances" {
 }
 
 # ---------------------------------------------------------------------------
+# GPU ノードプール（ローカルLLM推論用、オプション）
+# ---------------------------------------------------------------------------
+variable "enable_gpu_nodes" {
+  description = "Enable GPU node group for local LLM inference (NVIDIA A10G)"
+  type        = bool
+  default     = false
+}
+
+variable "gpu_instance_type" {
+  description = "EC2 instance type for GPU node group"
+  type        = string
+  default     = "g5.xlarge"
+}
+
+variable "gpu_node_min_count" {
+  description = "Minimum number of GPU nodes"
+  type        = number
+  default     = 0
+}
+
+variable "gpu_node_max_count" {
+  description = "Maximum number of GPU nodes"
+  type        = number
+  default     = 2
+}
+
+variable "gpu_node_desired_count" {
+  description = "Desired number of GPU nodes"
+  type        = number
+  default     = 1
+}
+
+# ---------------------------------------------------------------------------
 # コンテナ / デプロイメント
 # ---------------------------------------------------------------------------
 variable "image_tag" {

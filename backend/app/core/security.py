@@ -79,12 +79,12 @@ async def get_current_user(
         )
     try:
         return verify_token(credentials.credentials)
-    except ValueError:
+    except ValueError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="トークンが無効または期限切れです",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from e
 
 
 async def get_optional_user(

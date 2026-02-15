@@ -12,7 +12,7 @@ const API_BASE_URL = "/api/v1";
 // Axiosインスタンスの作成
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 120000, // タイムアウト: 120秒（分析処理用）
+  timeout: 300000, // タイムアウト: 300秒（分析処理は重いため余裕を持つ）
   headers: {
     "Content-Type": "application/json",
   },

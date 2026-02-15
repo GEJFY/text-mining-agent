@@ -4,7 +4,10 @@ k-means, HDBSCAN, GMMによるクラスタリング。
 LLMラベリング・要約、外れ値分析、階層クラスター・サブクラスター展開。
 """
 
+import asyncio
 import json
+import re
+from functools import partial
 from uuid import uuid4
 
 import numpy as np
@@ -23,6 +26,9 @@ from app.models.schemas import (
 from app.services.llm_orchestrator import LLMOrchestrator, TaskType
 from app.services.text_preprocessing import text_preprocessor
 
+# LLMラベリング1クラスタあたりのタイムアウト（秒）
+LLM_LABEL_TIMEOUT = 20
+
 logger = get_logger(__name__)
 
 
@@ -35,23 +41,32 @@ class ClusteringService:
     async def analyze(self, request: ClusterRequest, texts: list[str]) -> ClusterResult:
         """クラスター分析のフルパイプラインを実行"""
         job_id = str(uuid4())
-        logger.info("clustering_start", job_id=job_id, algorithm=request.algorithm)
+        logger.info("clustering_start", job_id=job_id, algorithm=request.algorithm, n_texts=len(texts))
 
-        # Embedding生成
-        embeddings = text_preprocessor.generate_embeddings(texts)
+        loop = asyncio.get_event_loop()
 
-        # UMAP次元削減
-        umap_model = UMAP(
-            n_neighbors=request.umap_n_neighbors,
-            min_dist=request.umap_min_dist,
-            n_components=2,
-            metric="cosine",
-            random_state=42,
+        # Embedding生成（CPU重い処理をスレッドで実行）
+        logger.info("clustering_embedding_start")
+        embeddings = await loop.run_in_executor(
+            None, text_preprocessor.generate_embeddings, texts
         )
-        umap_coords = umap_model.fit_transform(embeddings)
+        logger.info("clustering_embedding_done", shape=str(embeddings.shape))
 
-        # クラスタリング実行
-        labels, n_clusters = self._run_clustering(embeddings, request.algorithm, request.n_clusters)
+        # UMAP次元削減（CPU重い処理をスレッドで実行）
+        logger.info("clustering_umap_start")
+        umap_func = partial(
+            self._run_umap,
+            embeddings,
+            request.umap_n_neighbors,
+            request.umap_min_dist,
+        )
+        umap_coords = await loop.run_in_executor(None, umap_func)
+        logger.info("clustering_umap_done")
+
+        # クラスタリング実行（スレッドで実行）
+        labels, n_clusters = await loop.run_in_executor(
+            None, self._run_clustering, embeddings, request.algorithm, request.n_clusters
+        )
 
         # シルエットスコア
         valid_mask = labels >= 0
@@ -62,8 +77,10 @@ class ClusteringService:
         # 外れ値分析
         outliers = self._detect_outliers(embeddings, labels, texts, top_n=20)
 
-        # LLMラベリング
+        # LLMラベリング（並列実行 + タイムアウト保護）
+        logger.info("clustering_labeling_start", n_clusters=n_clusters)
         cluster_labels = await self._generate_labels(texts, labels, n_clusters, embeddings)
+        logger.info("clustering_labeling_done")
 
         return ClusterResult(
             job_id=job_id,
@@ -74,6 +91,20 @@ class ClusteringService:
             cluster_assignments=labels.tolist(),
             silhouette_score=sil_score,
         )
+
+    @staticmethod
+    def _run_umap(
+        embeddings: np.ndarray, n_neighbors: int, min_dist: float
+    ) -> np.ndarray:
+        """UMAP次元削減（スレッドプール用の静的メソッド）"""
+        umap_model = UMAP(
+            n_neighbors=n_neighbors,
+            min_dist=min_dist,
+            n_components=2,
+            metric="cosine",
+            random_state=42,
+        )
+        return umap_model.fit_transform(embeddings)
 
     def _run_clustering(
         self, embeddings: np.ndarray, algorithm: ClusterAlgorithm, n_clusters: int | None
@@ -140,16 +171,22 @@ class ClusteringService:
         n_clusters: int,
         embeddings: np.ndarray,
     ) -> list[ClusterLabel]:
-        """LLMによるクラスターラベリング・要約"""
-        cluster_labels = []
+        """LLMによるクラスターラベリング・要約（全クラスタ並列実行）"""
 
-        for cluster_id in range(n_clusters):
+        async def _label_one(cluster_id: int) -> ClusterLabel:
             mask = labels == cluster_id
             cluster_texts = [texts[i] for i in range(len(texts)) if mask[i]]
             cluster_size = len(cluster_texts)
 
             if cluster_size == 0:
-                continue
+                return ClusterLabel(
+                    cluster_id=cluster_id,
+                    title=f"クラスター{cluster_id}",
+                    summary="空のクラスター",
+                    keywords=[],
+                    size=0,
+                    centroid_texts=[],
+                )
 
             # 代表テキスト: セントロイドに近い上位5件
             cluster_embeddings = embeddings[mask]
@@ -157,6 +194,9 @@ class ClusteringService:
             distances = np.linalg.norm(cluster_embeddings - centroid, axis=1)
             top_indices = distances.argsort()[:5]
             representative_texts = [cluster_texts[i] for i in top_indices]
+
+            # キーワードフォールバック用：頻出単語を抽出
+            fallback_keywords = self._extract_keywords(cluster_texts)
 
             prompt = f"""以下はテキストクラスターの代表的なコメントです。
 このクラスターのタイトル（15字以内）、要約（100字以内）、キーワード（5個）をJSON形式で生成してください。
@@ -168,37 +208,51 @@ class ClusteringService:
 {{"title": "...", "summary": "...", "keywords": ["k1", "k2", "k3", "k4", "k5"]}}"""
 
             try:
-                response = await self.llm.invoke(
-                    prompt=prompt,
-                    task_type=TaskType.LABELING,
-                    system_prompt="テキストマイニングの専門家として、クラスターの特徴を簡潔に表現してください。",
-                    max_tokens=500,
+                response = await asyncio.wait_for(
+                    self.llm.invoke(
+                        prompt=prompt,
+                        task_type=TaskType.LABELING,
+                        system_prompt="テキストマイニングの専門家として、クラスターの特徴を簡潔に表現してください。",
+                        max_tokens=500,
+                    ),
+                    timeout=LLM_LABEL_TIMEOUT,
                 )
                 data = json.loads(response.strip().strip("```json").strip("```"))
-                cluster_labels.append(
-                    ClusterLabel(
-                        cluster_id=cluster_id,
-                        title=data.get("title", f"クラスター{cluster_id}")[:15],
-                        summary=data.get("summary", "")[:100],
-                        keywords=data.get("keywords", [])[:5],
-                        size=cluster_size,
-                        centroid_texts=[t[:200] for t in representative_texts],
-                    )
+                return ClusterLabel(
+                    cluster_id=cluster_id,
+                    title=data.get("title", f"クラスター{cluster_id}")[:15],
+                    summary=data.get("summary", "")[:100],
+                    keywords=data.get("keywords", fallback_keywords)[:5],
+                    size=cluster_size,
+                    centroid_texts=[t[:200] for t in representative_texts],
                 )
             except Exception as e:
                 logger.warning("label_generation_failed", cluster_id=cluster_id, error=str(e))
-                cluster_labels.append(
-                    ClusterLabel(
-                        cluster_id=cluster_id,
-                        title=f"クラスター{cluster_id}",
-                        summary=f"{cluster_size}件のテキストを含むクラスター",
-                        keywords=[],
-                        size=cluster_size,
-                        centroid_texts=[t[:200] for t in representative_texts],
-                    )
+                return ClusterLabel(
+                    cluster_id=cluster_id,
+                    title=f"クラスター{cluster_id}",
+                    summary=f"{cluster_size}件のテキストを含むクラスター",
+                    keywords=fallback_keywords,
+                    size=cluster_size,
+                    centroid_texts=[t[:200] for t in representative_texts],
                 )
 
-        return cluster_labels
+        # 全クラスタのラベルを並列生成
+        results = await asyncio.gather(*[_label_one(cid) for cid in range(n_clusters)])
+        return [r for r in results if r.size > 0]
+
+    @staticmethod
+    def _extract_keywords(texts: list[str], top_n: int = 5) -> list[str]:
+        """テキストから頻出キーワードを抽出（LLMフォールバック用）"""
+        from collections import Counter
+
+        words: list[str] = []
+        for t in texts[:50]:
+            # 2文字以上のカタカナ・漢字・英単語を抽出
+            tokens = re.findall(r"[\u30A0-\u30FF]{2,}|[\u4E00-\u9FFF]{2,}|[a-zA-Z]{3,}", t)
+            words.extend(tokens)
+        counter = Counter(words)
+        return [w for w, _ in counter.most_common(top_n)]
 
     async def sub_cluster(
         self,

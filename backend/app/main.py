@@ -19,6 +19,8 @@ from app.middleware.rate_limit import RateLimitMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     """アプリケーションのライフサイクル管理"""
+    import asyncio
+
     setup_logging()
     validate_config()
     setup_telemetry(app)
@@ -29,6 +31,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # 埋め込みモデルをバックグラウンドで事前ロード（初回分析の高速化）
+    from app.services.text_preprocessing import text_preprocessor
+
+    asyncio.get_event_loop().run_in_executor(None, text_preprocessor.preload_model)
 
     yield
 

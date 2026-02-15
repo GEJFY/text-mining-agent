@@ -221,6 +221,12 @@ class TextPreprocessor:
         )
         return np.array(embeddings)
 
+    def preload_model(self) -> None:
+        """埋め込みモデルを事前ロード（起動時に呼び出し）"""
+        logger.info("preloading_embedding_model", model=settings.embedding_model)
+        _ = self.embedding_model
+        logger.info("embedding_model_ready")
+
 
 # シングルトン
 text_preprocessor = TextPreprocessor()

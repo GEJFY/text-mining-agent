@@ -37,14 +37,17 @@ async def start_analysis(
     insights = await agent.run(context)
 
     # Redisに状態を保存
-    await agent_store.save(agent.agent_id, {
-        "state": agent.state.value,
-        "dataset_id": request.dataset_id,
-        "objective": request.objective,
-        "insights": [i.model_dump() for i in insights],
-        "pending_approval": agent.pending_approval,
-        "logs": [log.model_dump() for log in agent.logs],
-    })
+    await agent_store.save(
+        agent.agent_id,
+        {
+            "state": agent.state.value,
+            "dataset_id": request.dataset_id,
+            "objective": request.objective,
+            "insights": [i.model_dump() for i in insights],
+            "pending_approval": agent.pending_approval,
+            "logs": [log.model_dump() for log in agent.logs],
+        },
+    )
 
     return {
         "agent_id": agent.agent_id,
@@ -83,14 +86,17 @@ async def approve_hypotheses(
     insights = await agent.resume_after_approval(context, approved_hypotheses)
 
     # Redis更新
-    await agent_store.save(agent_id, {
-        "state": agent.state.value,
-        "dataset_id": dataset_id,
-        "objective": saved.get("objective", ""),
-        "insights": [i.model_dump() for i in insights],
-        "pending_approval": agent.pending_approval,
-        "logs": [log.model_dump() for log in agent.logs],
-    })
+    await agent_store.save(
+        agent_id,
+        {
+            "state": agent.state.value,
+            "dataset_id": dataset_id,
+            "objective": saved.get("objective", ""),
+            "insights": [i.model_dump() for i in insights],
+            "pending_approval": agent.pending_approval,
+            "logs": [log.model_dump() for log in agent.logs],
+        },
+    )
 
     return {
         "agent_id": agent_id,

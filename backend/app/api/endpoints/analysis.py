@@ -128,10 +128,12 @@ async def search_similar(
     for idx in indices:
         score = float(similarities[idx])
         if score >= threshold:
-            results.append({
-                "record_id": record_ids[idx],
-                "text": texts[idx][:200],
-                "similarity": round(score, 4),
-            })
+            results.append(
+                {
+                    "record_id": record_ids[idx],
+                    "text": texts[idx][:200],
+                    "similarity": round(score, 4),
+                }
+            )
 
     return {"query": query, "results": results, "total_searched": len(texts)}

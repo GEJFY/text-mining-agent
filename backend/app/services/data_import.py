@@ -4,9 +4,12 @@ CSV/TSV, Excel, テキスト, PDF, Word, JSON/JSONL対応。
 文字コード自動判定、動的カラムマッピング。
 """
 
+from __future__ import annotations
+
 import io
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 from uuid import uuid4
 
 import chardet
@@ -14,6 +17,9 @@ import pandas as pd
 
 from app.core.logging import get_logger
 from app.models.schemas import ColumnMapping, ColumnRole, DataImportResponse
+
+if TYPE_CHECKING:
+    from sqlalchemy.ext.asyncio import AsyncSession
 
 logger = get_logger(__name__)
 
@@ -38,7 +44,7 @@ class DataImportService:
         file_name: str,
         column_mappings: list[ColumnMapping] | None = None,
         encoding: str | None = None,
-        db: "AsyncSession | None" = None,
+        db: AsyncSession | None = None,
     ) -> DataImportResponse:
         """ファイルをインポートしDataFrameに変換"""
         dataset_id = str(uuid4())
@@ -198,9 +204,7 @@ class DataImportService:
             return pd.json_normalize(data)
 
 
-async def get_texts_by_dataset(
-    dataset_id: str, db: "AsyncSession"
-) -> tuple[list[str], list[str], list[str | None]]:
+async def get_texts_by_dataset(dataset_id: str, db: AsyncSession) -> tuple[list[str], list[str], list[str | None]]:
     """データセットからテキスト、レコードID、日付を取得"""
     from sqlalchemy import select
 

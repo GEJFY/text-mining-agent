@@ -208,6 +208,24 @@ export const reportsApi = {
     }),
 };
 
+/** 認証関連API */
+export const authApi = {
+  /** ユーザー登録 */
+  register: (email: string, password: string, displayName: string) =>
+    apiClient.post("/auth/register", {
+      email,
+      password,
+      display_name: displayName,
+    }),
+
+  /** ログイン */
+  login: (email: string, password: string) =>
+    apiClient.post("/auth/login", { email, password }),
+
+  /** 現在のユーザー情報を取得 */
+  me: () => apiClient.get("/auth/me"),
+};
+
 /** ダッシュボード関連API */
 export const dashboardApi = {
   /** KPIサマリーを取得 */

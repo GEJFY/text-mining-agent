@@ -1,143 +1,89 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import {
   Play,
   Loader2,
   Settings,
   Maximize2,
   Download,
+  AlertCircle,
+  Database,
 } from "lucide-react";
+import { useAnalysisStore } from "../stores/analysisStore";
+import { cooccurrenceApi } from "../api/client";
 
 /**
  * 共起ネットワークページ
- * D3フォースグラフ（プレースホルダー）、コミュニティ検出表示、ワードクラウド
+ * Canvasフォースグラフ、コミュニティ検出表示、ワードクラウド
+ * バックエンドAPI経由で実データを分析
  */
 
-// サンプルコミュニティデータ
-const sampleCommunities = [
-  {
-    id: 0,
-    name: "製品・品質コミュニティ",
-    color: "#6366f1",
-    words: [
-      { word: "品質", frequency: 120 },
-      { word: "製品", frequency: 95 },
-      { word: "耐久性", frequency: 78 },
-      { word: "デザイン", frequency: 65 },
-      { word: "素材", frequency: 52 },
-    ],
-  },
-  {
-    id: 1,
-    name: "サービス・対応コミュニティ",
-    color: "#8b5cf6",
-    words: [
-      { word: "対応", frequency: 105 },
-      { word: "サポート", frequency: 88 },
-      { word: "問い合わせ", frequency: 72 },
-      { word: "返品", frequency: 58 },
-      { word: "迅速", frequency: 45 },
-    ],
-  },
-  {
-    id: 2,
-    name: "価格・コストコミュニティ",
-    color: "#ec4899",
-    words: [
-      { word: "価格", frequency: 98 },
-      { word: "コスパ", frequency: 82 },
-      { word: "値段", frequency: 68 },
-      { word: "割引", frequency: 55 },
-      { word: "キャンペーン", frequency: 40 },
-    ],
-  },
-  {
-    id: 3,
-    name: "配送・物流コミュニティ",
-    color: "#f59e0b",
-    words: [
-      { word: "配送", frequency: 115 },
-      { word: "到着", frequency: 85 },
-      { word: "梱包", frequency: 62 },
-      { word: "追跡", frequency: 48 },
-      { word: "遅延", frequency: 38 },
-    ],
-  },
+// コミュニティカラー
+const COMMUNITY_COLORS = [
+  "#6366f1",
+  "#8b5cf6",
+  "#ec4899",
+  "#f59e0b",
+  "#10b981",
+  "#3b82f6",
+  "#ef4444",
+  "#14b8a6",
 ];
 
-// サンプルワードクラウドデータ
-const wordCloudData = [
-  { word: "品質", size: 48, color: "#6366f1" },
-  { word: "配送", size: 44, color: "#f59e0b" },
-  { word: "対応", size: 42, color: "#8b5cf6" },
-  { word: "価格", size: 40, color: "#ec4899" },
-  { word: "製品", size: 38, color: "#6366f1" },
-  { word: "サポート", size: 35, color: "#8b5cf6" },
-  { word: "到着", size: 33, color: "#f59e0b" },
-  { word: "コスパ", size: 32, color: "#ec4899" },
-  { word: "耐久性", size: 30, color: "#6366f1" },
-  { word: "問い合わせ", size: 28, color: "#8b5cf6" },
-  { word: "デザイン", size: 27, color: "#6366f1" },
-  { word: "値段", size: 26, color: "#ec4899" },
-  { word: "梱包", size: 25, color: "#f59e0b" },
-  { word: "返品", size: 24, color: "#8b5cf6" },
-  { word: "素材", size: 23, color: "#6366f1" },
-  { word: "割引", size: 22, color: "#ec4899" },
-  { word: "迅速", size: 21, color: "#8b5cf6" },
-  { word: "追跡", size: 20, color: "#f59e0b" },
-  { word: "キャンペーン", size: 19, color: "#ec4899" },
-  { word: "遅延", size: 18, color: "#f59e0b" },
-];
+/** ネットワークノード（描画用） */
+interface GraphNode {
+  id: string;
+  word: string;
+  frequency: number;
+  community: number;
+  x: number;
+  y: number;
+  r: number;
+}
 
-// サンプルネットワークノード
-const sampleNodes = [
-  { id: "品質", x: 200, y: 150, r: 30, community: 0 },
-  { id: "製品", x: 270, y: 120, r: 25, community: 0 },
-  { id: "耐久性", x: 160, y: 210, r: 20, community: 0 },
-  { id: "デザイン", x: 250, y: 200, r: 18, community: 0 },
-  { id: "対応", x: 450, y: 150, r: 28, community: 1 },
-  { id: "サポート", x: 500, y: 100, r: 24, community: 1 },
-  { id: "問い合わせ", x: 420, y: 220, r: 19, community: 1 },
-  { id: "価格", x: 350, y: 350, r: 26, community: 2 },
-  { id: "コスパ", x: 300, y: 310, r: 22, community: 2 },
-  { id: "値段", x: 400, y: 300, r: 18, community: 2 },
-  { id: "配送", x: 150, y: 350, r: 30, community: 3 },
-  { id: "到着", x: 100, y: 300, r: 22, community: 3 },
-  { id: "梱包", x: 200, y: 380, r: 17, community: 3 },
-];
+/** ネットワークエッジ */
+interface GraphEdge {
+  source: string;
+  target: string;
+  weight: number;
+}
 
-// サンプルエッジ
-const sampleEdges = [
-  { source: "品質", target: "製品", weight: 0.8 },
-  { source: "品質", target: "耐久性", weight: 0.7 },
-  { source: "品質", target: "デザイン", weight: 0.5 },
-  { source: "製品", target: "デザイン", weight: 0.6 },
-  { source: "製品", target: "耐久性", weight: 0.4 },
-  { source: "対応", target: "サポート", weight: 0.85 },
-  { source: "対応", target: "問い合わせ", weight: 0.7 },
-  { source: "サポート", target: "問い合わせ", weight: 0.55 },
-  { source: "価格", target: "コスパ", weight: 0.8 },
-  { source: "価格", target: "値段", weight: 0.75 },
-  { source: "コスパ", target: "値段", weight: 0.5 },
-  { source: "配送", target: "到着", weight: 0.8 },
-  { source: "配送", target: "梱包", weight: 0.6 },
-  { source: "到着", target: "梱包", weight: 0.4 },
-  { source: "品質", target: "価格", weight: 0.3 },
-  { source: "対応", target: "配送", weight: 0.25 },
-];
+/** コミュニティ情報 */
+interface CommunityInfo {
+  id: number;
+  name: string;
+  color: string;
+  words: Array<{ word: string; frequency: number }>;
+}
+
+/** ワードクラウドアイテム */
+interface WordCloudItem {
+  word: string;
+  size: number;
+  color: string;
+}
 
 function CooccurrencePage() {
+  const { activeDatasetId } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
-  const [hasResults, setHasResults] = useState(true);
-  const [minFrequency, setMinFrequency] = useState(10);
+  const [hasResults, setHasResults] = useState(false);
+  const [minFrequency, setMinFrequency] = useState(3);
   const [windowSize, setWindowSize] = useState(5);
   const [selectedCommunity, setSelectedCommunity] = useState<number | null>(
-    null
+    null,
   );
+  const [error, setError] = useState<string | null>(null);
+  const [modularity, setModularity] = useState<number>(0);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
-  // D3フォースグラフのプレースホルダー描画
-  useEffect(() => {
-    if (!hasResults || !canvasRef.current) return;
+  // API結果
+  const [nodes, setNodes] = useState<GraphNode[]>([]);
+  const [edges, setEdges] = useState<GraphEdge[]>([]);
+  const [communities, setCommunities] = useState<CommunityInfo[]>([]);
+  const [wordCloud, setWordCloud] = useState<WordCloudItem[]>([]);
+
+  // Canvas描画
+  const drawGraph = useCallback(() => {
+    if (!hasResults || !canvasRef.current || nodes.length === 0) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
@@ -149,19 +95,16 @@ function CooccurrencePage() {
     canvas.height = rect.height * dpr;
     ctx.scale(dpr, dpr);
 
-    // 背景クリア
     ctx.clearRect(0, 0, rect.width, rect.height);
-
-    const communityColors = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b"];
 
     // スケーリング
     const scaleX = rect.width / 600;
     const scaleY = rect.height / 450;
 
     // エッジ描画
-    sampleEdges.forEach((edge) => {
-      const sourceNode = sampleNodes.find((n) => n.id === edge.source);
-      const targetNode = sampleNodes.find((n) => n.id === edge.target);
+    edges.forEach((edge) => {
+      const sourceNode = nodes.find((n) => n.id === edge.source);
+      const targetNode = nodes.find((n) => n.id === edge.target);
       if (!sourceNode || !targetNode) return;
 
       if (
@@ -175,21 +118,24 @@ function CooccurrencePage() {
       ctx.beginPath();
       ctx.moveTo(sourceNode.x * scaleX, sourceNode.y * scaleY);
       ctx.lineTo(targetNode.x * scaleX, targetNode.y * scaleY);
+
+      const maxWeight = Math.max(...edges.map((e) => e.weight), 1);
+      const normalizedWeight = edge.weight / maxWeight;
+
       ctx.strokeStyle =
         selectedCommunity !== null &&
         (sourceNode.community !== selectedCommunity ||
           targetNode.community !== selectedCommunity)
           ? "rgba(156, 163, 175, 0.15)"
-          : `rgba(156, 163, 175, ${edge.weight * 0.5})`;
-      ctx.lineWidth = edge.weight * 3;
+          : `rgba(156, 163, 175, ${normalizedWeight * 0.6 + 0.1})`;
+      ctx.lineWidth = normalizedWeight * 3 + 0.5;
       ctx.stroke();
     });
 
     // ノード描画
-    sampleNodes.forEach((node) => {
+    nodes.forEach((node) => {
       const isHighlighted =
-        selectedCommunity === null ||
-        node.community === selectedCommunity;
+        selectedCommunity === null || node.community === selectedCommunity;
 
       ctx.beginPath();
       ctx.arc(
@@ -197,10 +143,10 @@ function CooccurrencePage() {
         node.y * scaleY,
         node.r * Math.min(scaleX, scaleY) * 0.8,
         0,
-        Math.PI * 2
+        Math.PI * 2,
       );
       ctx.fillStyle = isHighlighted
-        ? communityColors[node.community]
+        ? COMMUNITY_COLORS[node.community % COMMUNITY_COLORS.length]
         : "rgba(156, 163, 175, 0.3)";
       ctx.fill();
       ctx.strokeStyle = isHighlighted
@@ -216,21 +162,172 @@ function CooccurrencePage() {
       ctx.font = `${Math.max(10, node.r * 0.45 * Math.min(scaleX, scaleY))}px "Noto Sans JP", sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(node.id, node.x * scaleX, node.y * scaleY);
+      ctx.fillText(node.word, node.x * scaleX, node.y * scaleY);
     });
-  }, [hasResults, selectedCommunity]);
+  }, [hasResults, nodes, edges, selectedCommunity]);
+
+  useEffect(() => {
+    drawGraph();
+  }, [drawGraph]);
 
   // 分析実行
-  const handleRun = () => {
+  const handleRun = async () => {
+    if (!activeDatasetId) return;
+
     setIsRunning(true);
-    setTimeout(() => {
-      setIsRunning(false);
+    setError(null);
+    setSelectedCommunity(null);
+
+    try {
+      const response = await cooccurrenceApi.run(activeDatasetId, {
+        min_frequency: minFrequency,
+        window_size: windowSize,
+      });
+
+      const data = response.data;
+      setModularity(data.modularity as number);
+
+      // エッジマッピング
+      const mappedEdges: GraphEdge[] = (
+        data.edges as Array<{ source: string; target: string; weight: number }>
+      ).map((e) => ({
+        source: e.source,
+        target: e.target,
+        weight: e.weight,
+      }));
+      setEdges(mappedEdges);
+
+      // ノードマッピング + レイアウト計算
+      const rawNodes = data.nodes as Array<{
+        word: string;
+        frequency: number;
+        community_id: number;
+        degree_centrality: number;
+      }>;
+
+      // コミュニティごとにグループ化
+      const communityMap = data.communities as Record<string, string[]>;
+      const communityIds = Object.keys(communityMap)
+        .map(Number)
+        .sort((a, b) => a - b);
+
+      // コミュニティ情報を構築
+      const mappedCommunities: CommunityInfo[] = communityIds.map((cid) => {
+        const communityWords = communityMap[String(cid)] ?? [];
+        const wordsWithFreq = communityWords.map((w) => {
+          const node = rawNodes.find((n) => n.word === w);
+          return { word: w, frequency: node?.frequency ?? 0 };
+        });
+        wordsWithFreq.sort((a, b) => b.frequency - a.frequency);
+
+        return {
+          id: cid,
+          name: `コミュニティ ${cid + 1}`,
+          color: COMMUNITY_COLORS[cid % COMMUNITY_COLORS.length],
+          words: wordsWithFreq,
+        };
+      });
+      setCommunities(mappedCommunities);
+
+      // ノードの位置をコミュニティベースで計算
+      const maxFreq = Math.max(...rawNodes.map((n) => n.frequency), 1);
+      const centerX = 300;
+      const centerY = 225;
+      const communityRadius = 130;
+
+      const mappedNodes: GraphNode[] = rawNodes.map((n) => {
+        const cIdx = communityIds.indexOf(n.community_id);
+        const angle =
+          ((cIdx >= 0 ? cIdx : 0) / Math.max(communityIds.length, 1)) *
+          Math.PI *
+          2;
+        const cx = centerX + Math.cos(angle) * communityRadius;
+        const cy = centerY + Math.sin(angle) * communityRadius;
+
+        // コミュニティ内での位置をランダムオフセット
+        const communityWords = communityMap[String(n.community_id)] ?? [];
+        const wordIdx = communityWords.indexOf(n.word);
+        const innerAngle =
+          (wordIdx / Math.max(communityWords.length, 1)) * Math.PI * 2;
+        const innerRadius = 40 + Math.random() * 30;
+
+        return {
+          id: n.word,
+          word: n.word,
+          frequency: n.frequency,
+          community: n.community_id,
+          x: cx + Math.cos(innerAngle) * innerRadius,
+          y: cy + Math.sin(innerAngle) * innerRadius,
+          r: 12 + (n.frequency / maxFreq) * 25,
+        };
+      });
+      setNodes(mappedNodes);
+
+      // ワードクラウドデータ（頻度上位30語）
+      const sortedByFreq = [...rawNodes]
+        .sort((a, b) => b.frequency - a.frequency)
+        .slice(0, 30);
+      const topFreq = sortedByFreq[0]?.frequency ?? 1;
+      const mappedWordCloud: WordCloudItem[] = sortedByFreq.map((n) => ({
+        word: n.word,
+        size: 16 + (n.frequency / topFreq) * 36,
+        color: COMMUNITY_COLORS[n.community_id % COMMUNITY_COLORS.length],
+      }));
+      setWordCloud(mappedWordCloud);
+
       setHasResults(true);
-    }, 2000);
+    } catch (err) {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "共起ネットワーク分析に失敗しました";
+      setError(message);
+    } finally {
+      setIsRunning(false);
+    }
   };
+
+  // データセット未選択
+  if (!activeDatasetId) {
+    return (
+      <div className="max-w-7xl mx-auto">
+        <div className="card p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+          <Database size={48} className="mb-4 opacity-50" />
+          <p className="text-lg font-medium">データセットが選択されていません</p>
+          <p className="text-sm mt-1">
+            先にインポートページでデータをアップロードしてください
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {/* エラー表示 */}
+      {error && (
+        <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
+          <AlertCircle
+            size={18}
+            className="text-red-500 mt-0.5 flex-shrink-0"
+          />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">
+              分析エラー
+            </p>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-1">
+              {error}
+            </p>
+          </div>
+          <button
+            onClick={() => setError(null)}
+            className="text-red-400 hover:text-red-600"
+          >
+            &times;
+          </button>
+        </div>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
         {/* ========================================
             左パネル: パラメータ・コミュニティ
@@ -302,22 +399,36 @@ function CooccurrencePage() {
             </button>
           </div>
 
-          {/* コミュニティ検出結果 */}
+          {/* モジュラリティ */}
           {hasResults && (
             <div className="card p-4">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500 dark:text-gray-400">
+                  モジュラリティ
+                </span>
+                <span className="font-mono font-medium text-gray-900 dark:text-white">
+                  {modularity.toFixed(4)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* コミュニティ検出結果 */}
+          {hasResults && communities.length > 0 && (
+            <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                検出コミュニティ
+                検出コミュニティ（{communities.length}）
               </h3>
 
               <div className="space-y-2">
-                {sampleCommunities.map((community) => (
+                {communities.map((community) => (
                   <button
                     key={community.id}
                     onClick={() =>
                       setSelectedCommunity(
                         selectedCommunity === community.id
                           ? null
-                          : community.id
+                          : community.id,
                       )
                     }
                     className={`
@@ -336,6 +447,9 @@ function CooccurrencePage() {
                       />
                       <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
                         {community.name}
+                      </span>
+                      <span className="ml-auto text-xs text-gray-400">
+                        {community.words.length}語
                       </span>
                     </div>
                     <div className="flex flex-wrap gap-1">
@@ -366,7 +480,7 @@ function CooccurrencePage() {
         <div className="lg:col-span-3 space-y-4">
           {hasResults ? (
             <>
-              {/* ネットワークグラフ (Canvas プレースホルダー) */}
+              {/* ネットワークグラフ (Canvas) */}
               <div className="card p-6">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white">
@@ -388,15 +502,11 @@ function CooccurrencePage() {
                     className="w-full"
                     style={{ height: "420px" }}
                   />
-                  {/* D3への移行案内 */}
-                  <div className="absolute bottom-3 right-3 text-xs text-gray-400 dark:text-gray-500 bg-white/80 dark:bg-gray-900/80 px-2 py-1 rounded">
-                    D3.js フォースグラフ用プレースホルダー
-                  </div>
                 </div>
 
                 {/* 凡例 */}
                 <div className="flex flex-wrap gap-4 mt-3">
-                  {sampleCommunities.map((c) => (
+                  {communities.map((c) => (
                     <div
                       key={c.id}
                       className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400"
@@ -412,42 +522,45 @@ function CooccurrencePage() {
               </div>
 
               {/* ワードクラウド */}
-              <div className="card p-6">
-                <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
-                  ワードクラウド
-                </h3>
+              {wordCloud.length > 0 && (
+                <div className="card p-6">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+                    ワードクラウド
+                  </h3>
 
-                <div className="flex flex-wrap items-center justify-center gap-3 py-8 bg-gray-50 dark:bg-gray-800/30 rounded-lg min-h-[200px]">
-                  {wordCloudData.map((item) => (
-                    <span
-                      key={item.word}
-                      className="cursor-pointer transition-all duration-200 hover:opacity-70 select-none"
-                      style={{
-                        fontSize: `${item.size}px`,
-                        color: item.color,
-                        fontWeight:
-                          item.size > 35
-                            ? 700
-                            : item.size > 25
-                              ? 600
-                              : 400,
-                        opacity: 0.6 + (item.size / 48) * 0.4,
-                        transform: `rotate(${Math.random() > 0.7 ? (Math.random() > 0.5 ? -15 : 15) : 0}deg)`,
-                      }}
-                      title={`出現回数: ${item.size * 3}`}
-                    >
-                      {item.word}
-                    </span>
-                  ))}
+                  <div className="flex flex-wrap items-center justify-center gap-3 py-8 bg-gray-50 dark:bg-gray-800/30 rounded-lg min-h-[200px]">
+                    {wordCloud.map((item) => (
+                      <span
+                        key={item.word}
+                        className="cursor-pointer transition-all duration-200 hover:opacity-70 select-none"
+                        style={{
+                          fontSize: `${item.size}px`,
+                          color: item.color,
+                          fontWeight:
+                            item.size > 35
+                              ? 700
+                              : item.size > 25
+                                ? 600
+                                : 400,
+                          opacity: 0.6 + (item.size / 52) * 0.4,
+                        }}
+                        title={item.word}
+                      >
+                        {item.word}
+                      </span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* コミュニティ詳細テーブル */}
               {selectedCommunity !== null && (
                 <div className="card overflow-hidden">
                   <div className="p-4 border-b border-gray-200 dark:border-gray-800">
                     <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                      {sampleCommunities[selectedCommunity]?.name} - 単語一覧
+                      {communities.find((c) => c.id === selectedCommunity)
+                        ?.name ?? `コミュニティ ${selectedCommunity}`}{" "}
+                      - 単語一覧
                     </h3>
                   </div>
                   <div className="overflow-x-auto">
@@ -466,34 +579,46 @@ function CooccurrencePage() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                        {sampleCommunities[selectedCommunity]?.words.map(
-                          (w) => (
-                            <tr
-                              key={w.word}
-                              className="hover:bg-gray-50 dark:hover:bg-gray-800/30"
-                            >
-                              <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
-                                {w.word}
-                              </td>
-                              <td className="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">
-                                {w.frequency}
-                              </td>
-                              <td className="px-4 py-3">
-                                <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
-                                  <div
-                                    className="h-full rounded-full"
-                                    style={{
-                                      width: `${(w.frequency / 120) * 100}%`,
-                                      backgroundColor:
-                                        sampleCommunities[selectedCommunity]
-                                          ?.color,
-                                    }}
-                                  />
-                                </div>
-                              </td>
-                            </tr>
-                          )
-                        )}
+                        {communities
+                          .find((c) => c.id === selectedCommunity)
+                          ?.words.map((w) => {
+                            const maxFreq = Math.max(
+                              ...(communities.find(
+                                (c) => c.id === selectedCommunity,
+                              )?.words ?? [{ frequency: 1 }]).map(
+                                (x) => x.frequency,
+                              ),
+                              1,
+                            );
+                            return (
+                              <tr
+                                key={w.word}
+                                className="hover:bg-gray-50 dark:hover:bg-gray-800/30"
+                              >
+                                <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-white">
+                                  {w.word}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-right text-gray-700 dark:text-gray-300">
+                                  {w.frequency}
+                                </td>
+                                <td className="px-4 py-3">
+                                  <div className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                    <div
+                                      className="h-full rounded-full"
+                                      style={{
+                                        width: `${(w.frequency / maxFreq) * 100}%`,
+                                        backgroundColor:
+                                          communities.find(
+                                            (c) =>
+                                              c.id === selectedCommunity,
+                                          )?.color ?? "#6366f1",
+                                      }}
+                                    />
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>

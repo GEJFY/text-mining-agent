@@ -26,6 +26,19 @@ class AzureAIFoundryProvider(BaseLLMProvider):
 
     def _get_client(self):
         if self._client is None:
+            if not settings.azure_ai_foundry_endpoint:
+                raise LLMProviderError(
+                    provider=self.provider_name,
+                    model_id="",
+                    message="NEXUSTEXT_AZURE_AI_FOUNDRY_ENDPOINT が未設定です",
+                )
+            if not settings.azure_ai_foundry_api_key:
+                raise LLMProviderError(
+                    provider=self.provider_name,
+                    model_id="",
+                    message="NEXUSTEXT_AZURE_AI_FOUNDRY_API_KEY が未設定です",
+                )
+
             from openai import AsyncAzureOpenAI
 
             self._client = AsyncAzureOpenAI(
@@ -85,8 +98,15 @@ class AzureAIFoundryProvider(BaseLLMProvider):
             ) from e
 
     async def health_check(self) -> bool:
+        """Azure接続の実チェック（短い補完リクエストで検証）"""
         try:
-            self._get_client()
-            return True
-        except Exception:
+            client = self._get_client()
+            response = await client.chat.completions.create(
+                model="gpt-5-nano",
+                messages=[{"role": "user", "content": "ping"}],
+                max_tokens=1,
+            )
+            return response.choices[0].message.content is not None
+        except Exception as e:
+            logger.warning("azure_health_check_failed", error=str(e))
             return False

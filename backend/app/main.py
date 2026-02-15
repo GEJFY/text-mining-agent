@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     validate_config()
     setup_telemetry(app)
 
-    # データベーステーブル自動作成
+    # データベーステーブル作成（Alembicが適用済みの場合はスキップされる）
     from app.core.database import engine
     from app.models.orm import Base
 
@@ -54,8 +54,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Correlation-ID"],
+    expose_headers=["X-Correlation-ID"],
+    max_age=600,
 )
 
 # 例外ハンドラー登録

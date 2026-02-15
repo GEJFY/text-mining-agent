@@ -66,15 +66,20 @@ async def readiness() -> dict:
     # LLMプロバイダーヘルスチェック
     try:
         from app.services.llm_providers import get_llm_provider
+        from app.services.llm_providers.model_registry import ModelRegistry
 
         provider = get_llm_provider()
         is_healthy = await provider.health_check()
         checks["llm_provider"] = "ok" if is_healthy else "degraded"
         checks["llm_provider_name"] = provider.provider_name
+
+        # 利用可能モデル一覧
+        registry = ModelRegistry()
+        checks["llm_available_models"] = registry.get_supported_models(settings.llm_deployment_mode)
     except Exception as e:
         checks["llm_provider"] = f"error: {e}"
 
-    all_ok = all(v == "ok" for k, v in checks.items() if k != "llm_provider_name")
+    all_ok = all(v == "ok" for k, v in checks.items() if k not in ("llm_provider_name", "llm_available_models"))
     status = "ready" if all_ok else "degraded"
 
     return {

@@ -47,9 +47,7 @@ class ClusteringService:
 
         # Embedding生成（CPU重い処理をスレッドで実行）
         logger.info("clustering_embedding_start")
-        embeddings = await loop.run_in_executor(
-            None, text_preprocessor.generate_embeddings, texts
-        )
+        embeddings = await loop.run_in_executor(None, text_preprocessor.generate_embeddings, texts)
         logger.info("clustering_embedding_done", shape=str(embeddings.shape))
 
         # UMAP次元削減（CPU重い処理をスレッドで実行）
@@ -93,9 +91,7 @@ class ClusteringService:
         )
 
     @staticmethod
-    def _run_umap(
-        embeddings: np.ndarray, n_neighbors: int, min_dist: float
-    ) -> np.ndarray:
+    def _run_umap(embeddings: np.ndarray, n_neighbors: int, min_dist: float) -> np.ndarray:
         """UMAP次元削減（スレッドプール用の静的メソッド）"""
         umap_model = UMAP(
             n_neighbors=n_neighbors,

@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     validate_config()
     setup_telemetry(app)
 
-    # データベーステーブル自動作成
+    # データベーステーブル作成（Alembicが適用済みの場合はスキップされる）
     from app.core.database import engine
     from app.models.orm import Base
 

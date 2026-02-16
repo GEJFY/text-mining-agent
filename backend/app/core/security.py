@@ -97,3 +97,17 @@ async def get_optional_user(
         return verify_token(credentials.credentials)
     except ValueError:
         return None
+
+
+def require_role(*allowed_roles: UserRole):
+    """指定ロール以上のユーザーのみアクセスを許可するDependency"""
+
+    async def _check(current_user: TokenData = Depends(get_current_user)) -> TokenData:
+        if current_user.role not in allowed_roles:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"この操作には {', '.join(r.value for r in allowed_roles)} ロールが必要です",
+            )
+        return current_user
+
+    return _check

@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from "react-router-dom";
 import AppLayout from "./components/layout/AppLayout";
 import AuthGuard from "./components/AuthGuard";
+import ErrorBoundary from "./components/ErrorBoundary";
 import ToastContainer from "./components/ToastContainer";
 import LoginPage from "./pages/LoginPage";
 import DashboardPage from "./pages/DashboardPage";
@@ -17,7 +18,7 @@ import ReportsPage from "./pages/ReportsPage";
  */
 function App() {
   return (
-    <>
+    <ErrorBoundary>
     <ToastContainer />
     <Routes>
       {/* 認証不要ルート */}
@@ -37,7 +38,7 @@ function App() {
         </Route>
       </Route>
     </Routes>
-    </>
+    </ErrorBoundary>
   );
 }
 

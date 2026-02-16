@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import TokenData, get_current_user
+from app.core.security import TokenData, UserRole, get_current_user, require_role
 from app.models.orm import AnalysisJob
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.llm_orchestrator import llm_orchestrator
@@ -22,7 +22,7 @@ router = APIRouter()
 async def generate_report(
     request: ReportRequest,
     db: AsyncSession = Depends(get_db),
-    _current_user: TokenData = Depends(get_current_user),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN, UserRole.ANALYST)),
 ) -> ReportResponse:
     """レポートを生成"""
     # データセットの分析結果をDBから取得

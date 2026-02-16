@@ -2,6 +2,7 @@ import { useState } from 'react';
 import apiClient from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
 import DatasetGuard from '../components/DatasetGuard';
+import { handleApiError } from '../utils/handleApiError';
 
 /* レポートテンプレート定義 */
 const TEMPLATES = [
@@ -42,7 +43,7 @@ export default function ReportsPage() {
       setResult(res.data);
       setReports((prev) => [res.data, ...prev]);
     } catch (e) {
-      console.error(e);
+      handleApiError(e, "レポート生成に失敗しました");
     } finally {
       setGenerating(false);
     }

@@ -52,25 +52,41 @@ terraform apply
 ```
 ├── backend/              # FastAPI backend
 │   ├── app/
-│   │   ├── api/          # REST API routes
-│   │   ├── core/         # Config, security, cloud abstraction
-│   │   ├── services/     # Business logic
-│   │   ├── models/       # Pydantic models & DB schemas
+│   │   ├── api/          # REST API routes (auth, data, analysis, dashboard, etc.)
+│   │   ├── core/         # Config, security (JWT), database, telemetry
+│   │   ├── middleware/   # Security headers, rate limiting, correlation ID
+│   │   ├── services/     # Business logic (LLM orchestrator, text preprocessing)
+│   │   ├── models/       # SQLAlchemy ORM & Pydantic schemas
 │   │   └── agents/       # Autonomous analysis agent
-│   ├── tests/
+│   ├── tests/            # pytest (auth, dashboard, security headers, pagination)
 │   └── Dockerfile
 ├── frontend/             # React/TypeScript SPA
 │   ├── src/
+│   │   ├── pages/        # Dashboard, Cluster, Sentiment, Reports, etc.
+│   │   ├── components/   # DatasetGuard, ToastContainer, etc.
+│   │   └── stores/       # Zustand (auth, analysis, toast)
 │   └── Dockerfile
 ├── infra/
 │   └── terraform/        # Multi-cloud IaC
 │       ├── aws/
 │       ├── azure/
 │       └── gcp/
-├── .github/workflows/    # CI/CD pipelines
-├── docker-compose.yml
-└── docs/
+├── .github/workflows/    # CI pipeline (lint, test, build, security scan)
+└── docker-compose.yml
 ```
+
+## Security
+
+- **JWT認証**: 全API エンドポイントに `Bearer` トークン認証を適用
+- **セキュリティヘッダー**: X-Content-Type-Options, X-Frame-Options, CSP 等（OWASP準拠）
+- **レート制限**: 非認証エンドポイントへの過剰リクエストを制限
+- **DB接続プーリング**: `pool_pre_ping`, `pool_recycle` による堅牢な接続管理
+
+## Monitoring
+
+- `GET /health` — 基本ヘルスチェック
+- `GET /health/ready` — DB/Redis/LLM接続確認
+- `GET /metrics` — Prometheus メトリクス（認証不要）
 
 ## Supported Cloud Providers
 

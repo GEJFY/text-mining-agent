@@ -86,3 +86,12 @@ async def readiness_root() -> dict:
     from app.api.endpoints.health import readiness
 
     return await readiness()
+
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheusメトリクスエンドポイント（認証不要・運用監視用）"""
+    from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+    from starlette.responses import Response
+
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)

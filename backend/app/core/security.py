@@ -3,15 +3,13 @@
 from datetime import UTC, datetime, timedelta
 from enum import Enum
 
+import bcrypt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel
 
 from app.core.config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class UserRole(str, Enum):
@@ -56,11 +54,13 @@ def verify_token(token: str) -> TokenData:
 
 
 def hash_password(password: str) -> str:
-    return pwd_context.hash(password)
+    """bcryptでパスワードをハッシュ化（passlib不使用で互換性問題を回避）"""
+    return bcrypt.hashpw(password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
+    """bcryptでパスワードを検証"""
+    return bcrypt.checkpw(plain_password.encode("utf-8"), hashed_password.encode("utf-8"))
 
 
 # FastAPI Dependency: Bearer トークン認証

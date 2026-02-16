@@ -61,6 +61,9 @@ apiClient.interceptors.response.use(
         case 401:
           console.warn("[API] 認証エラー: トークンが無効です");
           localStorage.removeItem("nexustext-auth-token");
+          if (window.location.pathname !== "/login") {
+            window.location.href = "/login";
+          }
           break;
         case 403:
           console.warn("[API] アクセス拒否: 権限がありません");

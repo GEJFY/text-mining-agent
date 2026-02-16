@@ -14,6 +14,7 @@ from app.core.telemetry import setup_telemetry
 from app.core.validation import validate_config
 from app.middleware.correlation import CorrelationIdMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
+from app.middleware.security_headers import SecurityHeadersMiddleware
 
 
 @asynccontextmanager
@@ -49,6 +50,7 @@ app = FastAPI(
 
 # ミドルウェア（実行順: 下→上）
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(CorrelationIdMiddleware)
 app.add_middleware(
     CORSMiddleware,

@@ -10,6 +10,7 @@ from app.agents.agent_store import agent_store
 from app.agents.analysis_agent import AgentContext, AnalysisAgent
 from app.core.config import HITLMode
 from app.core.database import get_db
+from app.core.security import TokenData, get_current_user
 from app.models.schemas import AnalysisRequest
 from app.services.data_import import get_texts_by_dataset
 
@@ -20,6 +21,7 @@ router = APIRouter()
 async def start_analysis(
     request: AnalysisRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """自律分析を開始"""
     texts, record_ids, dates = await get_texts_by_dataset(request.dataset_id, db)
@@ -63,6 +65,7 @@ async def approve_hypotheses(
     agent_id: str,
     approved_hypotheses: list[str],
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """HITL: 仮説を承認して分析を再開"""
     saved = await agent_store.load(agent_id)
@@ -107,7 +110,10 @@ async def approve_hypotheses(
 
 
 @router.get("/{agent_id}/logs")
-async def get_agent_logs(agent_id: str) -> dict:
+async def get_agent_logs(
+    agent_id: str,
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
     """エージェントのログを取得"""
     saved = await agent_store.load(agent_id)
     if not saved:

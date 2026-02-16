@@ -8,6 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import TokenData, get_current_user
 from app.models.schemas import (
     ClusterRequest,
     ClusterResult,
@@ -38,6 +39,7 @@ async def _fetch_texts(dataset_id: str, db: AsyncSession) -> tuple[list[str], li
 async def run_clustering(
     request: ClusterRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> ClusterResult:
     """クラスター分析を実行"""
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
@@ -51,6 +53,7 @@ async def compare_clusters(
     cluster_a: int,
     cluster_b: int,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """2つのクラスターを比較"""
     texts, _, _ = await _fetch_texts(dataset_id, db)
@@ -62,6 +65,7 @@ async def compare_clusters(
 async def estimate_sentiment(
     request: SentimentRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> SentimentEstimate:
     """感情分析のコスト見積り"""
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
@@ -73,6 +77,7 @@ async def estimate_sentiment(
 async def run_sentiment(
     request: SentimentRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> SentimentResult:
     """感情分析を実行"""
     texts, record_ids, _ = await _fetch_texts(request.dataset_id, db)
@@ -84,6 +89,7 @@ async def run_sentiment(
 async def run_cooccurrence(
     request: CooccurrenceRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> CooccurrenceResult:
     """共起ネットワーク分析を実行"""
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
@@ -94,6 +100,7 @@ async def run_cooccurrence(
 async def run_cooccurrence_timeslice(
     request: CooccurrenceRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> list[dict]:
     """時間スライス共起ネットワーク分析"""
     texts, _, dates = await _fetch_texts(request.dataset_id, db)
@@ -107,6 +114,7 @@ async def search_similar(
     top_k: int = 10,
     threshold: float = 0.5,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """テキスト類似性検索"""
     texts, record_ids, _ = await _fetch_texts(dataset_id, db)

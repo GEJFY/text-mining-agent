@@ -5,13 +5,17 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import TokenData, get_current_user
 from app.models.orm import AnalysisJob, Dataset, TextRecord
 
 router = APIRouter()
 
 
 @router.get("/summary")
-async def dashboard_summary(db: AsyncSession = Depends(get_db)) -> dict:
+async def dashboard_summary(
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
     """ダッシュボードKPI・最近のアクティビティを返す"""
 
     # データセット数

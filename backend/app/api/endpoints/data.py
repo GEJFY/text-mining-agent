@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import TokenData, get_current_user
 from app.models.orm import Dataset as DatasetModel
 from app.models.schemas import ColumnMapping, DataImportResponse
 from app.services.data_import import data_import_service
@@ -20,6 +21,7 @@ async def import_data(
     column_mappings: str = Form(default="[]"),
     encoding: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> DataImportResponse:
     """ファイルをインポート"""
     file_bytes = await file.read()
@@ -35,7 +37,10 @@ async def import_data(
 
 
 @router.get("/datasets")
-async def list_datasets(db: AsyncSession = Depends(get_db)) -> dict:
+async def list_datasets(
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
     """データセット一覧"""
     result = await db.execute(select(DatasetModel).order_by(DatasetModel.created_at.desc()))
     datasets = result.scalars().all()

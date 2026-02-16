@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Database } from 'lucide-react';
 import apiClient from '../api/client';
+import { useAnalysisStore } from '../stores/analysisStore';
 
 /* レポートテンプレート定義 */
 const TEMPLATES = [
@@ -18,7 +20,7 @@ const FORMATS = [
 ];
 
 export default function ReportsPage() {
-  const [datasetId, setDatasetId] = useState('');
+  const { activeDatasetId } = useAnalysisStore();
   const [template, setTemplate] = useState('voc');
   const [format, setFormat] = useState('pdf');
   const [customPrompt, setCustomPrompt] = useState('');
@@ -31,7 +33,7 @@ export default function ReportsPage() {
     setGenerating(true);
     try {
       const res = await apiClient.post('/reports/generate', {
-        dataset_id: datasetId,
+        dataset_id: activeDatasetId,
         template,
         output_format: format,
         custom_prompt: template === 'custom' ? customPrompt : null,
@@ -50,7 +52,16 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">レポート生成</h1>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* データセット未選択 */}
+      {!activeDatasetId && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+          <Database size={48} className="mb-4 opacity-50" />
+          <p className="text-lg font-medium">データセットが選択されていません</p>
+          <p className="text-sm mt-1">先にインポートページでデータをアップロードしてください</p>
+        </div>
+      )}
+
+      {activeDatasetId && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 設定パネル */}
         <div className="lg:col-span-2 space-y-6">
           {/* テンプレート選択 */}
@@ -121,18 +132,6 @@ export default function ReportsPage() {
               オプション
             </h2>
             <div className="space-y-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                  データセットID
-                </label>
-                <input
-                  type="text"
-                  value={datasetId}
-                  onChange={(e) => setDatasetId(e.target.value)}
-                  className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm p-2 border"
-                  placeholder="dataset-xxx"
-                />
-              </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -148,7 +147,7 @@ export default function ReportsPage() {
 
             <button
               onClick={generateReport}
-              disabled={generating || !datasetId}
+              disabled={generating || !activeDatasetId}
               className="mt-4 w-full px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg font-medium disabled:opacity-50 transition-colors"
             >
               {generating ? 'レポート生成中...' : 'レポートを生成'}
@@ -193,7 +192,7 @@ export default function ReportsPage() {
             ))}
           </div>
         </div>
-      </div>
+      </div>}
     </div>
   );
 }

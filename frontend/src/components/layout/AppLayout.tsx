@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Outlet, NavLink, useLocation } from "react-router-dom";
+import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAnalysisStore } from "../../stores/analysisStore";
 import {
   LayoutDashboard,
@@ -15,7 +15,9 @@ import {
   ChevronRight,
   Sparkles,
   Menu,
+  LogOut,
 } from "lucide-react";
+import { useAuthStore } from "../../stores/authStore";
 
 /**
  * メインレイアウトコンポーネント
@@ -75,7 +77,14 @@ function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { darkMode, toggleDarkMode } = useAnalysisStore();
+  const { user, logout } = useAuthStore();
   const location = useLocation();
+  const navigate = useNavigate();
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
 
   // 現在のページタイトルを取得
   const currentPageTitle =
@@ -238,9 +247,18 @@ function AppLayout() {
 
           {/* ヘッダー右側 */}
           <div className="ml-auto flex items-center gap-3">
-            <span className="text-xs text-gray-400 dark:text-gray-500 hidden sm:inline">
-              テキストマイニングプラットフォーム
-            </span>
+            {user && (
+              <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:inline">
+                {user.display_name}
+              </span>
+            )}
+            <button
+              onClick={handleLogout}
+              className="btn-ghost"
+              title="ログアウト"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </header>
 

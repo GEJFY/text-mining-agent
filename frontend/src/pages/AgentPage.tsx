@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Database } from 'lucide-react';
 import apiClient from '../api/client';
+import { useAnalysisStore } from '../stores/analysisStore';
 
 /* 推論フェーズの定義 */
 const PHASES = [
@@ -28,8 +30,8 @@ interface Insight {
 }
 
 export default function AgentPage() {
+  const { activeDatasetId } = useAnalysisStore();
   const [hitlMode, setHitlMode] = useState<'full_auto' | 'semi_auto' | 'guided'>('semi_auto');
-  const [datasetId, setDatasetId] = useState('');
   const [objective, setObjective] = useState('');
   const [agentId, setAgentId] = useState<string | null>(null);
   const [state, setState] = useState<string>('idle');
@@ -42,7 +44,7 @@ export default function AgentPage() {
     setLoading(true);
     try {
       const res = await apiClient.post('/agent/start', {
-        dataset_id: datasetId,
+        dataset_id: activeDatasetId,
         objective,
         hitl_mode: hitlMode,
       });
@@ -97,22 +99,19 @@ export default function AgentPage() {
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">自律型分析エージェント</h1>
 
+      {/* データセット未選択 */}
+      {!activeDatasetId && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
+          <Database size={48} className="mb-4 opacity-50" />
+          <p className="text-lg font-medium">データセットが選択されていません</p>
+          <p className="text-sm mt-1">先にインポートページでデータをアップロードしてください</p>
+        </div>
+      )}
+
       {/* 設定パネル */}
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      {activeDatasetId && <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">分析設定</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              データセットID
-            </label>
-            <input
-              type="text"
-              value={datasetId}
-              onChange={(e) => setDatasetId(e.target.value)}
-              className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm p-2 border"
-              placeholder="dataset-xxx"
-            />
-          </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               分析目的
@@ -142,12 +141,12 @@ export default function AgentPage() {
         </div>
         <button
           onClick={startAnalysis}
-          disabled={loading || !datasetId}
+          disabled={loading || !activeDatasetId}
           className="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors"
         >
           {loading ? '分析中...' : '分析開始'}
         </button>
-      </div>
+      </div>}
 
       {/* 推論フェーズ進捗 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">

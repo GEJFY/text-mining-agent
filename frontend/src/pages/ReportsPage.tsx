@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Database } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
+import DatasetGuard from '../components/DatasetGuard';
 
 /* レポートテンプレート定義 */
 const TEMPLATES = [
@@ -49,19 +49,11 @@ export default function ReportsPage() {
   };
 
   return (
+    <DatasetGuard>
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">レポート生成</h1>
 
-      {/* データセット未選択 */}
-      {!activeDatasetId && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
-          <Database size={48} className="mb-4 opacity-50" />
-          <p className="text-lg font-medium">データセットが選択されていません</p>
-          <p className="text-sm mt-1">先にインポートページでデータをアップロードしてください</p>
-        </div>
-      )}
-
-      {activeDatasetId && <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* 設定パネル */}
         <div className="lg:col-span-2 space-y-6">
           {/* テンプレート選択 */}
@@ -192,7 +184,8 @@ export default function ReportsPage() {
             ))}
           </div>
         </div>
-      </div>}
+      </div>
     </div>
+    </DatasetGuard>
   );
 }

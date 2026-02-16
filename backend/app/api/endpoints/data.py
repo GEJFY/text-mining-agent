@@ -38,13 +38,21 @@ async def import_data(
 
 @router.get("/datasets")
 async def list_datasets(
+    offset: int = 0,
+    limit: int = 50,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
-    """データセット一覧"""
-    result = await db.execute(select(DatasetModel).order_by(DatasetModel.created_at.desc()))
+    """データセット一覧（ページネーション対応）"""
+    from sqlalchemy import func
+
+    total = (await db.execute(select(func.count(DatasetModel.id)))).scalar() or 0
+    result = await db.execute(select(DatasetModel).order_by(DatasetModel.created_at.desc()).offset(offset).limit(limit))
     datasets = result.scalars().all()
     return {
+        "total": total,
+        "offset": offset,
+        "limit": limit,
         "datasets": [
             {
                 "id": d.id,
@@ -55,5 +63,5 @@ async def list_datasets(
                 "created_at": d.created_at.isoformat() if d.created_at else None,
             }
             for d in datasets
-        ]
+        ],
     }

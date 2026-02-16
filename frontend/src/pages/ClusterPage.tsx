@@ -17,11 +17,11 @@ import {
   Loader2,
   RotateCcw,
   AlertCircle,
-  Database,
 } from "lucide-react";
 import { useAnalysisStore } from "../stores/analysisStore";
 import type { ClusterAlgorithm } from "../stores/analysisStore";
 import { clusterApi } from "../api/client";
+import DatasetGuard from "../components/DatasetGuard";
 
 /**
  * クラスタ分析ページ
@@ -188,22 +188,8 @@ function ClusterPage() {
         )
       : points;
 
-  // データセット未選択
-  if (!activeDatasetId) {
-    return (
-      <div className="max-w-7xl mx-auto">
-        <div className="card p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
-          <Database size={48} className="mb-4 opacity-50" />
-          <p className="text-lg font-medium">データセットが選択されていません</p>
-          <p className="text-sm mt-1">
-            先にインポートページでデータをアップロードしてください
-          </p>
-        </div>
-      </div>
-    );
-  }
-
   return (
+    <DatasetGuard>
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* エラー表示 */}
       {error && (
@@ -637,6 +623,7 @@ function ClusterPage() {
         </div>
       </div>
     </div>
+    </DatasetGuard>
   );
 }
 

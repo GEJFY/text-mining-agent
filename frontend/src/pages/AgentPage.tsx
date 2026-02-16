@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Database } from 'lucide-react';
 import apiClient from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
+import DatasetGuard from '../components/DatasetGuard';
 
 /* 推論フェーズの定義 */
 const PHASES = [
@@ -96,20 +96,12 @@ export default function AgentPage() {
   };
 
   return (
+    <DatasetGuard>
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-white">自律型分析エージェント</h1>
 
-      {/* データセット未選択 */}
-      {!activeDatasetId && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">
-          <Database size={48} className="mb-4 opacity-50" />
-          <p className="text-lg font-medium">データセットが選択されていません</p>
-          <p className="text-sm mt-1">先にインポートページでデータをアップロードしてください</p>
-        </div>
-      )}
-
       {/* 設定パネル */}
-      {activeDatasetId && <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+      <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
         <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">分析設定</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
@@ -146,7 +138,7 @@ export default function AgentPage() {
         >
           {loading ? '分析中...' : '分析開始'}
         </button>
-      </div>}
+      </div>
 
       {/* 推論フェーズ進捗 */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -308,5 +300,6 @@ export default function AgentPage() {
         </div>
       </div>
     </div>
+    </DatasetGuard>
   );
 }

@@ -3,8 +3,8 @@
 from datetime import datetime
 from uuid import uuid4
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, Integer, String, Text, func
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -43,6 +43,10 @@ class Dataset(Base):
     status: Mapped[str] = mapped_column(String(20), default="ready")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
+    # relationships
+    text_records: Mapped[list["TextRecord"]] = relationship(back_populates="dataset", lazy="selectin")
+    analysis_jobs: Mapped[list["AnalysisJob"]] = relationship(back_populates="dataset", lazy="selectin")
+
 
 class TextRecord(Base):
     """テキストレコードテーブル — インポートされた各行"""
@@ -50,11 +54,16 @@ class TextRecord(Base):
     __tablename__ = "text_records"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    dataset_id: Mapped[str] = mapped_column(String(36), index=True, nullable=False)
+    dataset_id: Mapped[str] = mapped_column(
+        String(36), ForeignKey("datasets.id", ondelete="CASCADE"), index=True, nullable=False
+    )
     row_index: Mapped[int] = mapped_column(Integer, nullable=False)
     text_content: Mapped[str] = mapped_column(Text, nullable=False)
     date_value: Mapped[str | None] = mapped_column(String(50), nullable=True)
     attributes: Mapped[dict] = mapped_column(JSON, default=dict)
+
+    # relationship
+    dataset: Mapped["Dataset"] = relationship(back_populates="text_records")
 
 
 class AnalysisJob(Base):
@@ -63,10 +72,13 @@ class AnalysisJob(Base):
     __tablename__ = "analysis_jobs"
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    dataset_id: Mapped[str] = mapped_column(String(36), index=True)
+    dataset_id: Mapped[str] = mapped_column(String(36), ForeignKey("datasets.id", ondelete="CASCADE"), index=True)
     analysis_type: Mapped[str] = mapped_column(String(50))
     parameters: Mapped[dict] = mapped_column(JSON, default=dict)
     result: Mapped[dict] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+    # relationship
+    dataset: Mapped["Dataset"] = relationship(back_populates="analysis_jobs")

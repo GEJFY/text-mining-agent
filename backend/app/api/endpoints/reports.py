@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
+from app.core.security import TokenData, get_current_user
 from app.models.orm import AnalysisJob
 from app.models.schemas import ReportRequest, ReportResponse
 from app.services.llm_orchestrator import llm_orchestrator
@@ -21,6 +22,7 @@ router = APIRouter()
 async def generate_report(
     request: ReportRequest,
     db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
 ) -> ReportResponse:
     """レポートを生成"""
     # データセットの分析結果をDBから取得
@@ -49,7 +51,10 @@ async def generate_report(
 
 
 @router.get("/{report_id}/download")
-async def download_report(report_id: str) -> FileResponse:
+async def download_report(
+    report_id: str,
+    _current_user: TokenData = Depends(get_current_user),
+) -> FileResponse:
     """レポートをダウンロード"""
     from pathlib import Path
 

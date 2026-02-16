@@ -37,15 +37,14 @@ async def readiness() -> dict:
     """Kubernetes readiness probe - 全依存サービスの接続確認"""
     checks: dict[str, str] = {}
 
-    # DB接続チェック
+    # DB接続チェック（グローバルengineを再利用）
     try:
         from sqlalchemy import text
-        from sqlalchemy.ext.asyncio import create_async_engine
 
-        engine = create_async_engine(settings.database_url, pool_pre_ping=True)
-        async with engine.connect() as conn:
+        from app.core.database import engine as db_engine
+
+        async with db_engine.connect() as conn:
             await conn.execute(text("SELECT 1"))
-        await engine.dispose()
         checks["database"] = "ok"
     except Exception as e:
         checks["database"] = f"error: {e}"

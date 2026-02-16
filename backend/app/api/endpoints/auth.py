@@ -110,12 +110,20 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
 
 
 @router.get("/me", response_model=UserInfoResponse)
-async def get_me(current_user: TokenData = Depends(get_current_user)):
+async def get_me(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
     """現在のユーザー情報を取得"""
+    result = await db.execute(select(User).where(User.id == current_user.user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
     return UserInfoResponse(
         user_id=current_user.user_id,
-        email="",
-        display_name="",
+        email=user.email,
+        display_name=user.display_name,
         role=current_user.role.value,
         tenant_id=current_user.tenant_id,
     )

@@ -109,6 +109,26 @@ async def login(body: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
 
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    current_user: TokenData = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """アクセストークンをリフレッシュ（有効なトークンで新トークンを発行）"""
+    result = await db.execute(select(User).where(User.id == current_user.user_id))
+    user = result.scalar_one_or_none()
+    if not user or not user.is_active:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="ユーザーが無効です")
+
+    new_token = create_access_token(user.id, UserRole(user.role), user.tenant_id)
+    return TokenResponse(
+        access_token=new_token,
+        user_id=user.id,
+        display_name=user.display_name,
+        role=user.role,
+    )
+
+
 @router.get("/me", response_model=UserInfoResponse)
 async def get_me(
     current_user: TokenData = Depends(get_current_user),

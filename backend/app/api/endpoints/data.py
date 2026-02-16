@@ -2,15 +2,17 @@
 
 import json
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
-from app.core.security import TokenData, get_current_user
+from app.core.security import TokenData, UserRole, get_current_user, require_role
 from app.models.orm import Dataset as DatasetModel
+from app.models.orm import TextRecord
 from app.models.schemas import ColumnMapping, DataImportResponse
 from app.services.data_import import data_import_service
+from app.services.pii_anonymizer import PIIAnonymizer
 
 router = APIRouter()
 
@@ -34,6 +36,29 @@ async def import_data(
         encoding=encoding,
         db=db,
     )
+
+
+@router.post("/{dataset_id}/pii-scan")
+async def scan_pii(
+    dataset_id: str,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN, UserRole.ANALYST)),
+) -> dict:
+    """データセット内のPIIを検知してレポートを返す"""
+    records = (await db.execute(select(TextRecord).where(TextRecord.dataset_id == dataset_id))).scalars().all()
+    if not records:
+        raise HTTPException(status_code=404, detail="Dataset not found or empty")
+
+    anonymizer = PIIAnonymizer()
+    texts = [r.text_content for r in records]
+    anonymizer.anonymize_batch(texts)
+
+    return {
+        "dataset_id": dataset_id,
+        "total_records": len(records),
+        "pii_detected": len(anonymizer.mappings),
+        "entities": anonymizer.get_mapping_report(),
+    }
 
 
 @router.get("/datasets")

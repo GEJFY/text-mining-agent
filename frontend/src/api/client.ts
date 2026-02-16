@@ -45,21 +45,72 @@ apiClient.interceptors.request.use(
 );
 
 // ========================================
-// レスポンスインターセプター
+// レスポンスインターセプター（自動トークンリフレッシュ付き）
 // ========================================
+
+let isRefreshing = false;
+let failedQueue: Array<{
+  resolve: (token: string) => void;
+  reject: (err: unknown) => void;
+}> = [];
+
+function processQueue(error: unknown, token: string | null) {
+  failedQueue.forEach((prom) => {
+    if (token) {
+      prom.resolve(token);
+    } else {
+      prom.reject(error);
+    }
+  });
+  failedQueue = [];
+}
 
 apiClient.interceptors.response.use(
   (response) => {
     return response;
   },
-  (error: AxiosError) => {
-    // エラーレスポンスのハンドリング
+  async (error: AxiosError) => {
+    const originalRequest = error.config as InternalAxiosRequestConfig & { _retry?: boolean };
+
+    // 401かつリフレッシュ未試行の場合、トークンリフレッシュを試みる
+    if (error.response?.status === 401 && !originalRequest._retry && originalRequest.url !== "/auth/refresh" && originalRequest.url !== "/auth/login") {
+      if (isRefreshing) {
+        return new Promise((resolve, reject) => {
+          failedQueue.push({ resolve: (token: string) => {
+            originalRequest.headers.Authorization = `Bearer ${token}`;
+            resolve(apiClient(originalRequest));
+          }, reject });
+        });
+      }
+
+      originalRequest._retry = true;
+      isRefreshing = true;
+
+      try {
+        const { data } = await apiClient.post("/auth/refresh");
+        const newToken = data.access_token;
+        localStorage.setItem("nexustext-auth-token", newToken);
+        originalRequest.headers.Authorization = `Bearer ${newToken}`;
+        processQueue(null, newToken);
+        return apiClient(originalRequest);
+      } catch {
+        processQueue(error, null);
+        localStorage.removeItem("nexustext-auth-token");
+        if (window.location.pathname !== "/login") {
+          window.location.href = "/login";
+        }
+        return Promise.reject(error);
+      } finally {
+        isRefreshing = false;
+      }
+    }
+
+    // その他のエラーハンドリング
     if (error.response) {
       const status = error.response.status;
 
       switch (status) {
         case 401:
-          console.warn("[API] 認証エラー: トークンが無効です");
           localStorage.removeItem("nexustext-auth-token");
           if (window.location.pathname !== "/login") {
             window.location.href = "/login";
@@ -84,7 +135,6 @@ apiClient.interceptors.response.use(
           console.error(`[API] エラー (${status}):`, error.response.data);
       }
     } else if (error.request) {
-      // ネットワークエラー
       console.error("[API] ネットワークエラー: サーバーに接続できません");
     }
 
@@ -224,6 +274,9 @@ export const authApi = {
   /** ログイン */
   login: (email: string, password: string) =>
     apiClient.post("/auth/login", { email, password }),
+
+  /** トークンリフレッシュ */
+  refresh: () => apiClient.post("/auth/refresh"),
 
   /** 現在のユーザー情報を取得 */
   me: () => apiClient.get("/auth/me"),

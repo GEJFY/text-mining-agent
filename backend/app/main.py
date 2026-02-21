@@ -43,7 +43,15 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     register_all_tools()
 
+    # Redisキャッシュ接続
+    from app.services.cache import analysis_cache
+
+    await analysis_cache.connect()
+
     yield
+
+    # キャッシュ接続クローズ
+    await analysis_cache.close()
 
 
 app = FastAPI(

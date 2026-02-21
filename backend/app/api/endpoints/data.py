@@ -29,13 +29,20 @@ async def import_data(
     file_bytes = await file.read()
     mappings = [ColumnMapping(**m) for m in json.loads(column_mappings)]
 
-    return await data_import_service.import_file(
+    result = await data_import_service.import_file(
         file_bytes=file_bytes,
         file_name=file.filename or "unknown",
         column_mappings=mappings if mappings else None,
         encoding=encoding,
         db=db,
     )
+
+    # インポート成功時にキャッシュを無効化
+    from app.services.cache import analysis_cache
+
+    await analysis_cache.invalidate_dataset(result.dataset_id)
+
+    return result
 
 
 @router.post("/{dataset_id}/pii-scan")

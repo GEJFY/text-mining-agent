@@ -300,6 +300,30 @@ export const dashboardApi = {
   ready: () => apiClient.get("/health/ready"),
 };
 
+/** 因果連鎖分析API */
+export const causalChainApi = {
+  run: (datasetId: string, params?: { max_chains?: number; focus_topic?: string }) =>
+    apiClient.post("/analysis/causal-chain", { dataset_id: datasetId, ...params }),
+};
+
+/** 矛盾検出API */
+export const contradictionApi = {
+  run: (datasetId: string, params?: { sensitivity?: string }) =>
+    apiClient.post("/analysis/contradiction", { dataset_id: datasetId, ...params }),
+};
+
+/** アクショナビリティスコアリングAPI */
+export const actionabilityApi = {
+  run: (datasetId: string, params?: { context?: string }) =>
+    apiClient.post("/analysis/actionability", { dataset_id: datasetId, ...params }),
+};
+
+/** タクソノミー生成API */
+export const taxonomyApi = {
+  run: (datasetId: string, params?: { max_depth?: number; max_categories?: number }) =>
+    apiClient.post("/analysis/taxonomy", { dataset_id: datasetId, ...params }),
+};
+
 /** 類似検索API */
 export const similarityApi = {
   /** テキスト類似性検索 */

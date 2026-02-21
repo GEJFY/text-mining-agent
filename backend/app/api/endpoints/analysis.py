@@ -22,6 +22,7 @@ from app.models.schemas import (
     SentimentRequest,
     SentimentResult,
 )
+from app.services.cache import analysis_cache
 from app.services.clustering import ClusteringService
 from app.services.cooccurrence import cooccurrence_service
 from app.services.data_import import get_texts_by_dataset
@@ -69,10 +70,15 @@ async def run_clustering(
     _current_user: TokenData = Depends(get_current_user),
 ) -> ClusterResult:
     """クラスター分析を実行"""
+    params = request.model_dump()
+    cached = await analysis_cache.get(request.dataset_id, "cluster", params)
+    if cached:
+        return ClusterResult(**cached)
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
     service = ClusteringService(llm_orchestrator)
     result = await service.analyze(request, texts)
-    await _save_analysis_job(db, request.dataset_id, "cluster", request.model_dump(), result.model_dump())
+    await _save_analysis_job(db, request.dataset_id, "cluster", params, result.model_dump())
+    await analysis_cache.set(request.dataset_id, "cluster", params, result.model_dump(), ttl=3600)
     return result
 
 
@@ -109,10 +115,15 @@ async def run_sentiment(
     _current_user: TokenData = Depends(get_current_user),
 ) -> SentimentResult:
     """感情分析を実行"""
+    params = request.model_dump()
+    cached = await analysis_cache.get(request.dataset_id, "sentiment", params)
+    if cached:
+        return SentimentResult(**cached)
     texts, record_ids, _ = await _fetch_texts(request.dataset_id, db)
     service = SentimentService(llm_orchestrator)
     result = await service.analyze(request, texts, record_ids)
-    await _save_analysis_job(db, request.dataset_id, "sentiment", request.model_dump(), result.model_dump())
+    await _save_analysis_job(db, request.dataset_id, "sentiment", params, result.model_dump())
+    await analysis_cache.set(request.dataset_id, "sentiment", params, result.model_dump(), ttl=3600)
     return result
 
 
@@ -123,9 +134,14 @@ async def run_cooccurrence(
     _current_user: TokenData = Depends(get_current_user),
 ) -> CooccurrenceResult:
     """共起ネットワーク分析を実行"""
+    params = request.model_dump()
+    cached = await analysis_cache.get(request.dataset_id, "cooccurrence", params)
+    if cached:
+        return CooccurrenceResult(**cached)
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
     result = cooccurrence_service.analyze(texts, request)
-    await _save_analysis_job(db, request.dataset_id, "cooccurrence", request.model_dump(), result.model_dump())
+    await _save_analysis_job(db, request.dataset_id, "cooccurrence", params, result.model_dump())
+    await analysis_cache.set(request.dataset_id, "cooccurrence", params, result.model_dump(), ttl=3600)
     return result
 
 
@@ -192,6 +208,11 @@ async def run_causal_chain(
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """因果チェーン抽出"""
+    params = {"max_chains": max_chains, "focus_topic": focus_topic}
+    cached = await analysis_cache.get(dataset_id, "causal_chain", params)
+    if cached:
+        return cached
+
     from app.services.analysis_registry import analysis_registry
 
     result = await analysis_registry.execute(
@@ -201,21 +222,17 @@ async def run_causal_chain(
         max_chains=max_chains,
         focus_topic=focus_topic,
     )
-    if result.success:
-        await _save_analysis_job(
-            db,
-            dataset_id,
-            "causal_chain",
-            {"max_chains": max_chains},
-            result.data,
-        )
-    return {
+    response = {
         "success": result.success,
         "data": result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
+    if result.success:
+        await _save_analysis_job(db, dataset_id, "causal_chain", params, result.data)
+        await analysis_cache.set(dataset_id, "causal_chain", params, response, ttl=1800)
+    return response
 
 
 @router.post("/contradiction")
@@ -226,6 +243,11 @@ async def run_contradiction(
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """矛盾検出"""
+    params = {"sensitivity": sensitivity}
+    cached = await analysis_cache.get(dataset_id, "contradiction", params)
+    if cached:
+        return cached
+
     from app.services.analysis_registry import analysis_registry
 
     result = await analysis_registry.execute(
@@ -234,21 +256,17 @@ async def run_contradiction(
         db,
         sensitivity=sensitivity,
     )
-    if result.success:
-        await _save_analysis_job(
-            db,
-            dataset_id,
-            "contradiction",
-            {"sensitivity": sensitivity},
-            result.data,
-        )
-    return {
+    response = {
         "success": result.success,
         "data": result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
+    if result.success:
+        await _save_analysis_job(db, dataset_id, "contradiction", params, result.data)
+        await analysis_cache.set(dataset_id, "contradiction", params, response, ttl=1800)
+    return response
 
 
 @router.post("/actionability")
@@ -260,6 +278,11 @@ async def run_actionability(
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """アクショナビリティスコアリング"""
+    params = {"context": context, "max_items": max_items}
+    cached = await analysis_cache.get(dataset_id, "actionability", params)
+    if cached:
+        return cached
+
     from app.services.analysis_registry import analysis_registry
 
     result = await analysis_registry.execute(
@@ -269,21 +292,17 @@ async def run_actionability(
         context=context,
         max_items=max_items,
     )
-    if result.success:
-        await _save_analysis_job(
-            db,
-            dataset_id,
-            "actionability",
-            {"context": context},
-            result.data,
-        )
-    return {
+    response = {
         "success": result.success,
         "data": result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
+    if result.success:
+        await _save_analysis_job(db, dataset_id, "actionability", params, result.data)
+        await analysis_cache.set(dataset_id, "actionability", params, response, ttl=1800)
+    return response
 
 
 @router.post("/taxonomy")
@@ -295,6 +314,11 @@ async def run_taxonomy(
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """タクソノミー自動生成"""
+    params = {"max_depth": max_depth, "max_categories": max_categories}
+    cached = await analysis_cache.get(dataset_id, "taxonomy", params)
+    if cached:
+        return cached
+
     from app.services.analysis_registry import analysis_registry
 
     result = await analysis_registry.execute(
@@ -304,18 +328,14 @@ async def run_taxonomy(
         max_depth=max_depth,
         max_categories=max_categories,
     )
-    if result.success:
-        await _save_analysis_job(
-            db,
-            dataset_id,
-            "taxonomy",
-            {"max_depth": max_depth, "max_categories": max_categories},
-            result.data,
-        )
-    return {
+    response = {
         "success": result.success,
         "data": result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
+    if result.success:
+        await _save_analysis_job(db, dataset_id, "taxonomy", params, result.data)
+        await analysis_cache.set(dataset_id, "taxonomy", params, response, ttl=1800)
+    return response

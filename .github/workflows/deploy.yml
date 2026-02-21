@@ -207,7 +207,7 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform Init
-        working-directory: infra/aws
+        working-directory: infra/terraform/aws
         run: |
           terraform init \
             -backend-config="bucket=${{ vars.AWS_TF_STATE_BUCKET }}" \
@@ -215,7 +215,7 @@ jobs:
             -backend-config="region=${{ vars.AWS_REGION || 'ap-northeast-1' }}"
 
       - name: Terraform Plan
-        working-directory: infra/aws
+        working-directory: infra/terraform/aws
         run: |
           terraform plan \
             -var="backend_image=${{ needs.build-push.outputs.backend_image }}" \
@@ -226,7 +226,7 @@ jobs:
 
       - name: Terraform Apply
         id: deploy
-        working-directory: infra/aws
+        working-directory: infra/terraform/aws
         run: |
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
@@ -284,7 +284,7 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform Init
-        working-directory: infra/azure
+        working-directory: infra/terraform/azure
         run: |
           terraform init \
             -backend-config="resource_group_name=${{ vars.AZURE_TF_RG }}" \
@@ -293,7 +293,7 @@ jobs:
             -backend-config="key=nexustext/${{ inputs.environment || 'production' }}/terraform.tfstate"
 
       - name: Terraform Plan
-        working-directory: infra/azure
+        working-directory: infra/terraform/azure
         run: |
           terraform plan \
             -var="backend_image=${{ needs.build-push.outputs.backend_image }}" \
@@ -304,7 +304,7 @@ jobs:
 
       - name: Terraform Apply
         id: deploy
-        working-directory: infra/azure
+        working-directory: infra/terraform/azure
         run: |
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"
@@ -349,14 +349,14 @@ jobs:
           terraform_version: ${{ env.TERRAFORM_VERSION }}
 
       - name: Terraform Init
-        working-directory: infra/gcp
+        working-directory: infra/terraform/gcp
         run: |
           terraform init \
             -backend-config="bucket=${{ vars.GCP_TF_STATE_BUCKET }}" \
             -backend-config="prefix=nexustext/${{ inputs.environment || 'production' }}"
 
       - name: Terraform Plan
-        working-directory: infra/gcp
+        working-directory: infra/terraform/gcp
         run: |
           terraform plan \
             -var="backend_image=${{ needs.build-push.outputs.backend_image }}" \
@@ -369,7 +369,7 @@ jobs:
 
       - name: Terraform Apply
         id: deploy
-        working-directory: infra/gcp
+        working-directory: infra/terraform/gcp
         run: |
           terraform apply -auto-approve tfplan
           echo "app_url=$(terraform output -raw app_url 2>/dev/null || echo 'N/A')" >> "$GITHUB_OUTPUT"

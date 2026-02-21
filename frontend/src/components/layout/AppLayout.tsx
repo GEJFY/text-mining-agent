@@ -16,6 +16,10 @@ import {
   Sparkles,
   Menu,
   LogOut,
+  GitBranch,
+  AlertTriangle,
+  Target,
+  FolderTree,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 
@@ -59,6 +63,30 @@ const navItems: NavItem[] = [
     path: "/analysis/cooccurrence",
     label: "共起ネットワーク",
     icon: <Network size={20} />,
+    group: "分析",
+  },
+  {
+    path: "/analysis/causal-chain",
+    label: "因果連鎖分析",
+    icon: <GitBranch size={20} />,
+    group: "分析",
+  },
+  {
+    path: "/analysis/contradiction",
+    label: "矛盾検出",
+    icon: <AlertTriangle size={20} />,
+    group: "分析",
+  },
+  {
+    path: "/analysis/actionability",
+    label: "アクショナビリティ",
+    icon: <Target size={20} />,
+    group: "分析",
+  },
+  {
+    path: "/analysis/taxonomy",
+    label: "タクソノミー生成",
+    icon: <FolderTree size={20} />,
     group: "分析",
   },
   {

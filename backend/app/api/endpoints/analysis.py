@@ -1,14 +1,18 @@
 """テキスト解析エンドポイント
 
 クラスター分析、感情分析、共起ネットワーク、テキスト類似性検索。
-データベースからテキストを取得して実分析を実行。
+データベースからテキストを取得して実分析を実行し、結果をAnalysisJobに永続化。
 """
+
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
 from app.core.security import TokenData, get_current_user
+from app.models.orm import AnalysisJob
 from app.models.schemas import (
     ClusterRequest,
     ClusterResult,
@@ -35,6 +39,29 @@ async def _fetch_texts(dataset_id: str, db: AsyncSession) -> tuple[list[str], li
     return texts, record_ids, dates
 
 
+async def _save_analysis_job(
+    db: AsyncSession,
+    dataset_id: str,
+    analysis_type: str,
+    parameters: dict,
+    result: dict,
+) -> str:
+    """分析結果をAnalysisJobテーブルに永続化"""
+    job_id = str(uuid4())
+    job = AnalysisJob(
+        id=job_id,
+        dataset_id=dataset_id,
+        analysis_type=analysis_type,
+        parameters=parameters,
+        result=result,
+        status="completed",
+        completed_at=datetime.now(UTC),
+    )
+    db.add(job)
+    await db.flush()
+    return job_id
+
+
 @router.post("/cluster", response_model=ClusterResult)
 async def run_clustering(
     request: ClusterRequest,
@@ -44,7 +71,9 @@ async def run_clustering(
     """クラスター分析を実行"""
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
     service = ClusteringService(llm_orchestrator)
-    return await service.analyze(request, texts)
+    result = await service.analyze(request, texts)
+    await _save_analysis_job(db, request.dataset_id, "cluster", request.model_dump(), result.model_dump())
+    return result
 
 
 @router.post("/cluster/compare")
@@ -82,7 +111,9 @@ async def run_sentiment(
     """感情分析を実行"""
     texts, record_ids, _ = await _fetch_texts(request.dataset_id, db)
     service = SentimentService(llm_orchestrator)
-    return await service.analyze(request, texts, record_ids)
+    result = await service.analyze(request, texts, record_ids)
+    await _save_analysis_job(db, request.dataset_id, "sentiment", request.model_dump(), result.model_dump())
+    return result
 
 
 @router.post("/cooccurrence", response_model=CooccurrenceResult)
@@ -93,7 +124,9 @@ async def run_cooccurrence(
 ) -> CooccurrenceResult:
     """共起ネットワーク分析を実行"""
     texts, _, _ = await _fetch_texts(request.dataset_id, db)
-    return cooccurrence_service.analyze(texts, request)
+    result = cooccurrence_service.analyze(texts, request)
+    await _save_analysis_job(db, request.dataset_id, "cooccurrence", request.model_dump(), result.model_dump())
+    return result
 
 
 @router.post("/cooccurrence/timeslice")
@@ -145,3 +178,144 @@ async def search_similar(
             )
 
     return {"query": query, "results": results, "total_searched": len(texts)}
+
+
+# === 新規LLM分析エンドポイント（ツールレジストリ経由） ===
+
+
+@router.post("/causal-chain")
+async def run_causal_chain(
+    dataset_id: str,
+    max_chains: int = 10,
+    focus_topic: str = "",
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """因果チェーン抽出"""
+    from app.services.analysis_registry import analysis_registry
+
+    result = await analysis_registry.execute(
+        "causal_chain_analysis",
+        dataset_id,
+        db,
+        max_chains=max_chains,
+        focus_topic=focus_topic,
+    )
+    if result.success:
+        await _save_analysis_job(
+            db,
+            dataset_id,
+            "causal_chain",
+            {"max_chains": max_chains},
+            result.data,
+        )
+    return {
+        "success": result.success,
+        "data": result.data,
+        "summary": result.summary,
+        "key_findings": result.key_findings,
+        "error": result.error,
+    }
+
+
+@router.post("/contradiction")
+async def run_contradiction(
+    dataset_id: str,
+    sensitivity: str = "medium",
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """矛盾検出"""
+    from app.services.analysis_registry import analysis_registry
+
+    result = await analysis_registry.execute(
+        "contradiction_detection",
+        dataset_id,
+        db,
+        sensitivity=sensitivity,
+    )
+    if result.success:
+        await _save_analysis_job(
+            db,
+            dataset_id,
+            "contradiction",
+            {"sensitivity": sensitivity},
+            result.data,
+        )
+    return {
+        "success": result.success,
+        "data": result.data,
+        "summary": result.summary,
+        "key_findings": result.key_findings,
+        "error": result.error,
+    }
+
+
+@router.post("/actionability")
+async def run_actionability(
+    dataset_id: str,
+    context: str = "",
+    max_items: int = 100,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """アクショナビリティスコアリング"""
+    from app.services.analysis_registry import analysis_registry
+
+    result = await analysis_registry.execute(
+        "actionability_scoring",
+        dataset_id,
+        db,
+        context=context,
+        max_items=max_items,
+    )
+    if result.success:
+        await _save_analysis_job(
+            db,
+            dataset_id,
+            "actionability",
+            {"context": context},
+            result.data,
+        )
+    return {
+        "success": result.success,
+        "data": result.data,
+        "summary": result.summary,
+        "key_findings": result.key_findings,
+        "error": result.error,
+    }
+
+
+@router.post("/taxonomy")
+async def run_taxonomy(
+    dataset_id: str,
+    max_depth: int = 3,
+    max_categories: int = 8,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """タクソノミー自動生成"""
+    from app.services.analysis_registry import analysis_registry
+
+    result = await analysis_registry.execute(
+        "taxonomy_generation",
+        dataset_id,
+        db,
+        max_depth=max_depth,
+        max_categories=max_categories,
+    )
+    if result.success:
+        await _save_analysis_job(
+            db,
+            dataset_id,
+            "taxonomy",
+            {"max_depth": max_depth, "max_categories": max_categories},
+            result.data,
+        )
+    return {
+        "success": result.success,
+        "data": result.data,
+        "summary": result.summary,
+        "key_findings": result.key_findings,
+        "error": result.error,
+    }

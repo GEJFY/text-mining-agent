@@ -38,6 +38,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
     asyncio.get_event_loop().run_in_executor(None, text_preprocessor.preload_model)
 
+    # 分析ツールレジストリの初期化
+    from app.services.tools import register_all_tools
+
+    register_all_tools()
+
     yield
 
 

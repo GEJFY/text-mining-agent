@@ -259,3 +259,112 @@ class ReportResponse(BaseModel):
     download_url: str
     format: ReportFormat
     generated_at: datetime
+
+
+# === 因果連鎖分析 ===
+
+
+class CausalChain(BaseModel):
+    """因果連鎖の1チェーン"""
+
+    chain: list[str]  # ["原因", "結果", "影響"]
+    confidence: float = Field(ge=0.0, le=1.0)
+    supporting_text_indices: list[int] = []
+    explanation: str = ""
+
+
+class CausalChainResult(BaseModel):
+    """因果連鎖分析結果"""
+
+    chains: list[CausalChain]
+    total_analyzed: int
+
+
+# === 矛盾検出 ===
+
+
+class Contradiction(BaseModel):
+    """矛盾ペア"""
+
+    statement_a: str
+    statement_b: str
+    record_id_a: str = ""
+    record_id_b: str = ""
+    contradiction_type: str = "direct"  # direct/implicit/temporal
+    confidence: float = Field(ge=0.0, le=1.0, default=0.5)
+    explanation: str = ""
+
+
+class ContradictionResult(BaseModel):
+    """矛盾検出結果"""
+
+    contradictions: list[Contradiction]
+    total_analyzed: int
+    sensitivity: str = "medium"
+
+
+# === アクショナビリティスコアリング ===
+
+
+class ActionabilityItem(BaseModel):
+    """個別テキストのアクショナビリティ評価"""
+
+    record_id: str = ""
+    text_preview: str = ""
+    overall: float = Field(ge=0.0, le=1.0, default=0.0)
+    specificity: float = Field(ge=0.0, le=1.0, default=0.0)
+    urgency: float = Field(ge=0.0, le=1.0, default=0.0)
+    feasibility: float = Field(ge=0.0, le=1.0, default=0.0)
+    impact: float = Field(ge=0.0, le=1.0, default=0.0)
+    category: str = "informational"  # immediate/short_term/long_term/informational
+    suggested_actions: list[str] = []
+
+
+class ActionabilityResult(BaseModel):
+    """アクショナビリティスコアリング結果"""
+
+    items: list[ActionabilityItem]
+    distribution: dict[str, int] = {}
+    total_scored: int = 0
+
+
+# === タクソノミー生成 ===
+
+
+class TaxonomyNode(BaseModel):
+    """タクソノミーのノード（再帰的）"""
+
+    name: str
+    description: str = ""
+    text_count: int = 0
+    text_indices: list[int] = []
+    children: list["TaxonomyNode"] = []
+
+
+class TaxonomyResult(BaseModel):
+    """タクソノミー生成結果"""
+
+    root_categories: list[TaxonomyNode]
+    uncategorized_count: int = 0
+
+
+# === パイプライン ===
+
+
+class PipelineRequest(BaseModel):
+    """Agent→Analysis→Reportパイプラインリクエスト"""
+
+    dataset_id: str
+    objective: str = ""
+    template: ReportTemplate = ReportTemplate.VOC
+    output_format: ReportFormat = ReportFormat.PDF
+
+
+class PipelineResponse(BaseModel):
+    """パイプラインレスポンス"""
+
+    agent_id: str
+    insights: list[AgentInsight]
+    analysis_jobs: list[str] = []
+    report_id: str | None = None
+    report_download_url: str | None = None

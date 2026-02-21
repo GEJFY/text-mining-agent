@@ -1,6 +1,7 @@
 """自律型分析エージェントエンドポイント
 
 Redis永続化 + DB からテキスト取得。
+ツールレジストリ経由で分析を実行し、結果をAnalysisJobに保存。
 """
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,7 +12,7 @@ from app.agents.analysis_agent import AgentContext, AnalysisAgent
 from app.core.config import HITLMode
 from app.core.database import get_db
 from app.core.security import TokenData, UserRole, get_current_user, require_role
-from app.models.schemas import AnalysisRequest
+from app.models.schemas import AnalysisRequest, PipelineRequest
 from app.services.data_import import get_texts_by_dataset
 
 router = APIRouter()
@@ -34,6 +35,7 @@ async def start_analysis(
         dataset_id=request.dataset_id,
         objective=request.objective,
         texts=texts,
+        db=db,
     )
 
     insights = await agent.run(context)
@@ -72,7 +74,6 @@ async def approve_hypotheses(
     if not saved:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    # データセットからテキストを再取得
     dataset_id = saved.get("dataset_id", "")
     texts, _, _ = await get_texts_by_dataset(dataset_id, db)
     if not texts:
@@ -85,10 +86,10 @@ async def approve_hypotheses(
         dataset_id=dataset_id,
         objective=saved.get("objective", ""),
         texts=texts,
+        db=db,
     )
     insights = await agent.resume_after_approval(context, approved_hypotheses)
 
-    # Redis更新
     await agent_store.save(
         agent_id,
         {
@@ -124,3 +125,16 @@ async def get_agent_logs(
         "state": saved.get("state", "unknown"),
         "logs": saved.get("logs", []),
     }
+
+
+@router.post("/pipeline")
+async def run_analysis_pipeline(
+    request: PipelineRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN, UserRole.ANALYST)),
+) -> dict:
+    """Agent → Analysis → Report 自動パイプライン"""
+    from app.services.pipeline import run_pipeline
+
+    result = await run_pipeline(request, db)
+    return result.model_dump()

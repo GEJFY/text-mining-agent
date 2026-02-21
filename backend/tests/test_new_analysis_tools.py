@@ -52,14 +52,16 @@ async def test_causal_chain_tool(mock_db, sample_texts, sample_record_ids):
         ensure_ascii=False,
     )
 
-    with _patch_get_texts(sample_texts, sample_record_ids):
-        with patch("app.services.tools.causal_chain.llm_orchestrator") as mock_llm:
-            mock_llm.invoke = AsyncMock(return_value=llm_response)
+    with (
+        _patch_get_texts(sample_texts, sample_record_ids),
+        patch("app.services.tools.causal_chain.llm_orchestrator") as mock_llm,
+    ):
+        mock_llm.invoke = AsyncMock(return_value=llm_response)
 
-            from app.services.tools.causal_chain import CausalChainTool
+        from app.services.tools.causal_chain import CausalChainTool
 
-            tool = CausalChainTool()
-            result = await tool.execute("ds-001", mock_db)
+        tool = CausalChainTool()
+        result = await tool.execute("ds-001", mock_db)
 
     assert result.success is True
     assert result.tool_name == "causal_chain_analysis"
@@ -87,14 +89,16 @@ async def test_contradiction_tool(mock_db, sample_texts, sample_record_ids):
         ensure_ascii=False,
     )
 
-    with _patch_get_texts(sample_texts, sample_record_ids):
-        with patch("app.services.tools.contradiction.llm_orchestrator") as mock_llm:
-            mock_llm.invoke = AsyncMock(return_value=llm_response)
+    with (
+        _patch_get_texts(sample_texts, sample_record_ids),
+        patch("app.services.tools.contradiction.llm_orchestrator") as mock_llm,
+    ):
+        mock_llm.invoke = AsyncMock(return_value=llm_response)
 
-            from app.services.tools.contradiction import ContradictionTool
+        from app.services.tools.contradiction import ContradictionTool
 
-            tool = ContradictionTool()
-            result = await tool.execute("ds-001", mock_db)
+        tool = ContradictionTool()
+        result = await tool.execute("ds-001", mock_db)
 
     assert result.success is True
     assert result.tool_name == "contradiction_detection"
@@ -123,14 +127,16 @@ async def test_actionability_tool(mock_db, sample_texts, sample_record_ids):
         ensure_ascii=False,
     )
 
-    with _patch_get_texts(sample_texts, sample_record_ids):
-        with patch("app.services.tools.actionability.llm_orchestrator") as mock_llm:
-            mock_llm.invoke = AsyncMock(return_value=llm_response)
+    with (
+        _patch_get_texts(sample_texts, sample_record_ids),
+        patch("app.services.tools.actionability.llm_orchestrator") as mock_llm,
+    ):
+        mock_llm.invoke = AsyncMock(return_value=llm_response)
 
-            from app.services.tools.actionability import ActionabilityTool
+        from app.services.tools.actionability import ActionabilityTool
 
-            tool = ActionabilityTool()
-            result = await tool.execute("ds-001", mock_db)
+        tool = ActionabilityTool()
+        result = await tool.execute("ds-001", mock_db)
 
     assert result.success is True
     assert result.tool_name == "actionability_scoring"
@@ -168,14 +174,16 @@ async def test_taxonomy_tool(mock_db, sample_texts, sample_record_ids):
         ensure_ascii=False,
     )
 
-    with _patch_get_texts(sample_texts, sample_record_ids):
-        with patch("app.services.tools.taxonomy.llm_orchestrator") as mock_llm:
-            mock_llm.invoke = AsyncMock(side_effect=[pass1_response, pass2_response])
+    with (
+        _patch_get_texts(sample_texts, sample_record_ids),
+        patch("app.services.tools.taxonomy.llm_orchestrator") as mock_llm,
+    ):
+        mock_llm.invoke = AsyncMock(side_effect=[pass1_response, pass2_response])
 
-            from app.services.tools.taxonomy import TaxonomyTool
+        from app.services.tools.taxonomy import TaxonomyTool
 
-            tool = TaxonomyTool()
-            result = await tool.execute("ds-001", mock_db)
+        tool = TaxonomyTool()
+        result = await tool.execute("ds-001", mock_db)
 
     assert result.success is True
     assert result.tool_name == "taxonomy_generation"

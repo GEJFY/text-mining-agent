@@ -333,4 +333,20 @@ export const similarityApi = {
     }),
 };
 
+/** ストップワード管理API */
+export const stopwordsApi = {
+  /** 現在のストップワード一覧を取得 */
+  get: () => apiClient.get("/analysis/stopwords"),
+
+  /** ストップワードを更新 */
+  update: (category: string, words: string[], mode: string = "add") =>
+    apiClient.put("/analysis/stopwords", { category, words, mode }),
+
+  /** デフォルトにリセット */
+  reset: (category: string = "all") =>
+    apiClient.post("/analysis/stopwords/reset", null, {
+      params: { category },
+    }),
+};
+
 export default apiClient;

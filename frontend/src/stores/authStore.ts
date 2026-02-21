@@ -36,11 +36,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const res = await authApi.login(email, password);
-      const { token, user_id, email: userEmail, display_name, role } = res.data;
-      localStorage.setItem(TOKEN_KEY, token);
+      const { access_token, user_id, display_name, role } = res.data;
+      localStorage.setItem(TOKEN_KEY, access_token);
       set({
-        token,
-        user: { user_id, email: userEmail, display_name, role },
+        token: access_token,
+        user: { user_id, email, display_name, role },
         isLoading: false,
       });
     } catch (e: any) {
@@ -55,11 +55,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     set({ isLoading: true, error: null });
     try {
       const res = await authApi.register(email, password, displayName);
-      const { token, user_id, email: userEmail, display_name, role } = res.data;
-      localStorage.setItem(TOKEN_KEY, token);
+      const { access_token, user_id, display_name, role } = res.data;
+      localStorage.setItem(TOKEN_KEY, access_token);
       set({
-        token,
-        user: { user_id, email: userEmail, display_name, role },
+        token: access_token,
+        user: { user_id, email, display_name, role },
         isLoading: false,
       });
     } catch (e: any) {

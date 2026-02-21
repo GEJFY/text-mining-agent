@@ -85,6 +85,7 @@ class ClusterResult(BaseModel):
     umap_coordinates: list[list[float]]
     cluster_assignments: list[int]
     silhouette_score: float
+    point_texts: list[str] = []
 
 
 # === 感情分析 ===
@@ -259,6 +260,51 @@ class ReportResponse(BaseModel):
     download_url: str
     format: ReportFormat
     generated_at: datetime
+
+
+# === LLM分析リクエスト ===
+
+
+class CausalChainRequest(BaseModel):
+    """因果連鎖分析リクエスト"""
+
+    dataset_id: str
+    max_chains: int = Field(default=10, ge=1, le=50)
+    focus_topic: str = ""
+
+
+class ContradictionRequest(BaseModel):
+    """矛盾検出リクエスト"""
+
+    dataset_id: str
+    sensitivity: str = "medium"
+
+
+class ActionabilityRequest(BaseModel):
+    """アクショナビリティスコアリングリクエスト"""
+
+    dataset_id: str
+    context: str = ""
+    max_items: int = Field(default=100, ge=1, le=1000)
+
+
+class TaxonomyRequest(BaseModel):
+    """タクソノミー生成リクエスト"""
+
+    dataset_id: str
+    max_depth: int = Field(default=3, ge=1, le=10)
+    max_categories: int = Field(default=8, ge=2, le=50)
+
+
+# === ストップワード管理 ===
+
+
+class StopwordUpdateRequest(BaseModel):
+    """ストップワード更新リクエスト"""
+
+    category: str = Field(description="ja / en / custom")
+    words: list[str]
+    mode: str = Field(default="add", description="replace / add / remove")
 
 
 # === 因果連鎖分析 ===

@@ -42,34 +42,132 @@ class TextPreprocessor:
     """テキスト前処理エンジン"""
 
     # 言語別ストップワード（プリセット）
-    STOPWORDS_JA = {
+    DEFAULT_STOPWORDS_JA = {
+        # 助詞
         "の",
         "に",
         "は",
         "を",
-        "た",
         "が",
         "で",
         "て",
         "と",
-        "し",
-        "れ",
-        "さ",
-        "ある",
-        "いる",
-        "する",
-        "こと",
-        "これ",
-        "それ",
-        "もの",
-        "ない",
+        "も",
+        "か",
+        "から",
+        "まで",
+        "より",
+        "へ",
+        "や",
+        "など",
+        "ば",
+        "けど",
+        "けれど",
+        "けれども",
+        "のに",
+        "ので",
+        "って",
+        "とか",
+        # 助動詞・コピュラ
+        "た",
+        "だ",
         "です",
         "ます",
+        "ません",
+        "でした",
+        "ました",
+        "ない",
+        "ぬ",
+        "れる",
+        "られる",
+        "せる",
+        "させる",
+        # 動詞（機能語的）
+        "する",
+        "いる",
+        "ある",
+        "なる",
+        "できる",
+        "おる",
+        "し",
+        "さ",
+        "れ",
+        "い",
+        "き",
+        "く",
+        # 代名詞・指示詞
+        "これ",
+        "それ",
+        "あれ",
+        "この",
+        "その",
+        "あの",
+        "ここ",
+        "そこ",
+        "あそこ",
+        "こう",
+        "そう",
+        "ああ",
+        "どれ",
+        "どの",
+        "どこ",
+        "どう",
+        # 接続詞
+        "そして",
+        "しかし",
+        "また",
+        "ただし",
+        "なお",
+        "つまり",
+        "すなわち",
+        "ところで",
+        "さらに",
+        "しかも",
+        "だから",
+        "したがって",
+        "ところが",
+        "それで",
+        "でも",
+        # 副詞・形式名詞
+        "こと",
+        "もの",
+        "ため",
+        "ところ",
+        "よう",
+        "はず",
+        "わけ",
+        "とき",
+        "ほう",
+        "うち",
+        "かた",
+        "ほか",
+        "とても",
+        "かなり",
+        "やはり",
+        "まだ",
+        "もう",
+        "すでに",
+        "ちょっと",
+        "少し",
+        "全く",
+        "非常",
+        # 記号的
+        "等",
+        "他",
+        "方",
+        "中",
+        "上",
+        "下",
+        "前",
+        "後",
+        "間",
     }
-    STOPWORDS_EN = {
+    DEFAULT_STOPWORDS_EN = {
+        # Articles
         "the",
         "a",
         "an",
+        # Be verbs
         "is",
         "are",
         "was",
@@ -77,12 +175,15 @@ class TextPreprocessor:
         "be",
         "been",
         "being",
+        # Have verbs
         "have",
         "has",
         "had",
+        # Do verbs
         "do",
         "does",
         "did",
+        # Modal verbs
         "will",
         "would",
         "could",
@@ -91,10 +192,7 @@ class TextPreprocessor:
         "might",
         "can",
         "shall",
-        "and",
-        "or",
-        "but",
-        "if",
+        # Prepositions
         "in",
         "on",
         "at",
@@ -104,12 +202,91 @@ class TextPreprocessor:
         "with",
         "by",
         "from",
+        "about",
+        "into",
+        "through",
+        "during",
+        "before",
+        "after",
+        "above",
+        "below",
+        "between",
+        "under",
+        "over",
+        # Conjunctions
+        "and",
+        "or",
+        "but",
+        "if",
+        "so",
+        "yet",
+        "nor",
+        "both",
+        "either",
+        "neither",
+        "not",
+        "only",
+        "also",
+        # Pronouns
         "this",
         "that",
+        "these",
+        "those",
+        "it",
+        "its",
+        "i",
+        "me",
+        "my",
+        "we",
+        "our",
+        "us",
+        "you",
+        "your",
+        "he",
+        "she",
+        "him",
+        "her",
+        "his",
+        "they",
+        "them",
+        "their",
+        "what",
+        "which",
+        "who",
+        "whom",
+        # Common words
+        "there",
+        "here",
+        "then",
+        "than",
+        "when",
+        "where",
+        "how",
+        "all",
+        "each",
+        "every",
+        "any",
+        "some",
+        "no",
+        "such",
+        "very",
+        "just",
+        "more",
+        "most",
+        "other",
+        "own",
+        "same",
+        "as",
+        "up",
+        "out",
+        "much",
+        "many",
     }
 
     def __init__(self) -> None:
         self._embedding_model: SentenceTransformer | None = None
+        self.stopwords_ja: set[str] = set(self.DEFAULT_STOPWORDS_JA)
+        self.stopwords_en: set[str] = set(self.DEFAULT_STOPWORDS_EN)
         self.custom_stopwords: set[str] = set()
 
     @property
@@ -175,9 +352,64 @@ class TextPreprocessor:
 
     def remove_stopwords(self, tokens: list[str], language: str = "ja") -> list[str]:
         """ストップワード除去"""
-        stopwords = self.STOPWORDS_JA if language == "ja" else self.STOPWORDS_EN
+        stopwords = self.stopwords_ja if language == "ja" else self.stopwords_en
         all_stopwords = stopwords | self.custom_stopwords
         return [t for t in tokens if t not in all_stopwords and len(t) > 1]
+
+    def get_stopwords(self) -> dict[str, list[str]]:
+        """全ストップワードを取得"""
+        return {
+            "ja": sorted(self.stopwords_ja),
+            "en": sorted(self.stopwords_en),
+            "custom": sorted(self.custom_stopwords),
+        }
+
+    def update_stopwords(self, category: str, words: list[str], mode: str = "replace") -> dict[str, list[str]]:
+        """ストップワードを更新
+
+        Args:
+            category: "ja", "en", "custom"
+            words: 更新する単語リスト
+            mode: "replace"=全置換, "add"=追加, "remove"=削除
+        """
+        target = self._get_stopword_set(category)
+        word_set = set(words)
+
+        if mode == "replace":
+            target.clear()
+            target.update(word_set)
+        elif mode == "add":
+            target.update(word_set)
+        elif mode == "remove":
+            target -= word_set
+
+        self._set_stopword_set(category, target)
+        return self.get_stopwords()
+
+    def reset_stopwords(self, category: str) -> dict[str, list[str]]:
+        """ストップワードをデフォルトにリセット"""
+        if category == "ja":
+            self.stopwords_ja = set(self.DEFAULT_STOPWORDS_JA)
+        elif category == "en":
+            self.stopwords_en = set(self.DEFAULT_STOPWORDS_EN)
+        elif category == "custom":
+            self.custom_stopwords = set()
+        return self.get_stopwords()
+
+    def _get_stopword_set(self, category: str) -> set[str]:
+        if category == "ja":
+            return self.stopwords_ja
+        elif category == "en":
+            return self.stopwords_en
+        return self.custom_stopwords
+
+    def _set_stopword_set(self, category: str, words: set[str]) -> None:
+        if category == "ja":
+            self.stopwords_ja = words
+        elif category == "en":
+            self.stopwords_en = words
+        else:
+            self.custom_stopwords = words
 
     def preprocess_pipeline(
         self,

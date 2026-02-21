@@ -12,9 +12,9 @@ from uuid import uuid4
 
 import numpy as np
 from sklearn.cluster import KMeans
+from sklearn.decomposition import PCA
 from sklearn.metrics import silhouette_score
 from sklearn.mixture import GaussianMixture
-from umap import UMAP
 
 from app.core.logging import get_logger
 from app.models.schemas import (
@@ -88,19 +88,28 @@ class ClusteringService:
             umap_coordinates=umap_coords.tolist(),
             cluster_assignments=labels.tolist(),
             silhouette_score=sil_score,
+            point_texts=[t[:100] for t in texts],
         )
 
     @staticmethod
     def _run_umap(embeddings: np.ndarray, n_neighbors: int, min_dist: float) -> np.ndarray:
-        """UMAP次元削減（スレッドプール用の静的メソッド）"""
-        umap_model = UMAP(
-            n_neighbors=n_neighbors,
-            min_dist=min_dist,
-            n_components=2,
-            metric="cosine",
-            random_state=42,
-        )
-        return umap_model.fit_transform(embeddings)
+        """UMAP次元削減（失敗時はPCAフォールバック）"""
+        try:
+            from umap import UMAP
+
+            umap_model = UMAP(
+                n_neighbors=n_neighbors,
+                min_dist=min_dist,
+                n_components=2,
+                metric="cosine",
+                random_state=42,
+                low_memory=True,
+            )
+            return umap_model.fit_transform(embeddings)
+        except Exception as e:
+            logger.warning("umap_failed_fallback_pca", error=str(e))
+            pca = PCA(n_components=2, random_state=42)
+            return pca.fit_transform(embeddings)
 
     def _run_clustering(
         self, embeddings: np.ndarray, algorithm: ClusterAlgorithm, n_clusters: int | None

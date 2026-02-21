@@ -56,6 +56,8 @@ class TaxonomyTool(AnalysisToolBase):
         )
 
     async def execute(self, dataset_id: str, db: AsyncSession, **kwargs: Any) -> ToolResult:
+        from app.services.tools import extract_json
+
         texts, record_ids, _ = await get_texts_by_dataset(dataset_id, db)
         if not texts:
             return ToolResult(
@@ -100,10 +102,10 @@ JSON配列で出力:
 
         try:
             response = await llm_orchestrator.invoke(pass1_prompt, TaskType.LABELING, max_tokens=1500)
-            categories = json.loads(response.strip().strip("```json").strip("```"))
+            categories = extract_json(response)
             if not isinstance(categories, list):
                 categories = [categories]
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.warning("taxonomy_pass1_failed", error=str(e))
             categories = [{"name": "未分類", "description": "分類不能"}]
 
@@ -151,10 +153,10 @@ JSON形式で出力:
 
         try:
             response = await llm_orchestrator.invoke(pass2_prompt, TaskType.LABELING, max_tokens=4096)
-            taxonomy = json.loads(response.strip().strip("```json").strip("```"))
+            taxonomy = extract_json(response)
             if not isinstance(taxonomy, dict):
                 taxonomy = {"root_categories": categories, "uncategorized_count": 0}
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.warning("taxonomy_pass2_failed", error=str(e))
             taxonomy = {
                 "root_categories": [

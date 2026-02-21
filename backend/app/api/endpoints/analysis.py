@@ -14,13 +14,18 @@ from app.core.database import get_db
 from app.core.security import TokenData, get_current_user
 from app.models.orm import AnalysisJob
 from app.models.schemas import (
+    ActionabilityRequest,
+    CausalChainRequest,
     ClusterRequest,
     ClusterResult,
+    ContradictionRequest,
     CooccurrenceRequest,
     CooccurrenceResult,
     SentimentEstimate,
     SentimentRequest,
     SentimentResult,
+    StopwordUpdateRequest,
+    TaxonomyRequest,
 )
 from app.services.cache import analysis_cache
 from app.services.clustering import ClusteringService
@@ -201,15 +206,13 @@ async def search_similar(
 
 @router.post("/causal-chain")
 async def run_causal_chain(
-    dataset_id: str,
-    max_chains: int = 10,
-    focus_topic: str = "",
+    request: CausalChainRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """因果チェーン抽出"""
-    params = {"max_chains": max_chains, "focus_topic": focus_topic}
-    cached = await analysis_cache.get(dataset_id, "causal_chain", params)
+    params = {"max_chains": request.max_chains, "focus_topic": request.focus_topic}
+    cached = await analysis_cache.get(request.dataset_id, "causal_chain", params)
     if cached:
         return cached
 
@@ -217,10 +220,10 @@ async def run_causal_chain(
 
     result = await analysis_registry.execute(
         "causal_chain_analysis",
-        dataset_id,
+        request.dataset_id,
         db,
-        max_chains=max_chains,
-        focus_topic=focus_topic,
+        max_chains=request.max_chains,
+        focus_topic=request.focus_topic,
     )
     response = {
         "success": result.success,
@@ -230,21 +233,20 @@ async def run_causal_chain(
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "causal_chain", params, result.data)
-        await analysis_cache.set(dataset_id, "causal_chain", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "causal_chain", params, result.data)
+        await analysis_cache.set(request.dataset_id, "causal_chain", params, response, ttl=1800)
     return response
 
 
 @router.post("/contradiction")
 async def run_contradiction(
-    dataset_id: str,
-    sensitivity: str = "medium",
+    request: ContradictionRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """矛盾検出"""
-    params = {"sensitivity": sensitivity}
-    cached = await analysis_cache.get(dataset_id, "contradiction", params)
+    params = {"sensitivity": request.sensitivity}
+    cached = await analysis_cache.get(request.dataset_id, "contradiction", params)
     if cached:
         return cached
 
@@ -252,9 +254,9 @@ async def run_contradiction(
 
     result = await analysis_registry.execute(
         "contradiction_detection",
-        dataset_id,
+        request.dataset_id,
         db,
-        sensitivity=sensitivity,
+        sensitivity=request.sensitivity,
     )
     response = {
         "success": result.success,
@@ -264,22 +266,20 @@ async def run_contradiction(
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "contradiction", params, result.data)
-        await analysis_cache.set(dataset_id, "contradiction", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "contradiction", params, result.data)
+        await analysis_cache.set(request.dataset_id, "contradiction", params, response, ttl=1800)
     return response
 
 
 @router.post("/actionability")
 async def run_actionability(
-    dataset_id: str,
-    context: str = "",
-    max_items: int = 100,
+    request: ActionabilityRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """アクショナビリティスコアリング"""
-    params = {"context": context, "max_items": max_items}
-    cached = await analysis_cache.get(dataset_id, "actionability", params)
+    params = {"context": request.context, "max_items": request.max_items}
+    cached = await analysis_cache.get(request.dataset_id, "actionability", params)
     if cached:
         return cached
 
@@ -287,10 +287,10 @@ async def run_actionability(
 
     result = await analysis_registry.execute(
         "actionability_scoring",
-        dataset_id,
+        request.dataset_id,
         db,
-        context=context,
-        max_items=max_items,
+        context=request.context,
+        max_items=request.max_items,
     )
     response = {
         "success": result.success,
@@ -300,22 +300,20 @@ async def run_actionability(
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "actionability", params, result.data)
-        await analysis_cache.set(dataset_id, "actionability", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "actionability", params, result.data)
+        await analysis_cache.set(request.dataset_id, "actionability", params, response, ttl=1800)
     return response
 
 
 @router.post("/taxonomy")
 async def run_taxonomy(
-    dataset_id: str,
-    max_depth: int = 3,
-    max_categories: int = 8,
+    request: TaxonomyRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """タクソノミー自動生成"""
-    params = {"max_depth": max_depth, "max_categories": max_categories}
-    cached = await analysis_cache.get(dataset_id, "taxonomy", params)
+    params = {"max_depth": request.max_depth, "max_categories": request.max_categories}
+    cached = await analysis_cache.get(request.dataset_id, "taxonomy", params)
     if cached:
         return cached
 
@@ -323,10 +321,10 @@ async def run_taxonomy(
 
     result = await analysis_registry.execute(
         "taxonomy_generation",
-        dataset_id,
+        request.dataset_id,
         db,
-        max_depth=max_depth,
-        max_categories=max_categories,
+        max_depth=request.max_depth,
+        max_categories=request.max_categories,
     )
     response = {
         "success": result.success,
@@ -336,6 +334,53 @@ async def run_taxonomy(
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "taxonomy", params, result.data)
-        await analysis_cache.set(dataset_id, "taxonomy", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "taxonomy", params, result.data)
+        await analysis_cache.set(request.dataset_id, "taxonomy", params, response, ttl=1800)
     return response
+
+
+# === ストップワード管理 ===
+
+
+@router.get("/stopwords")
+async def get_stopwords(
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """現在のストップワード一覧を取得"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    return text_preprocessor.get_stopwords()
+
+
+@router.put("/stopwords")
+async def update_stopwords(
+    request: StopwordUpdateRequest,
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """ストップワードを更新"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    if request.category not in ("ja", "en", "custom"):
+        raise HTTPException(status_code=400, detail="category must be 'ja', 'en', or 'custom'")
+    if request.mode not in ("replace", "add", "remove"):
+        raise HTTPException(status_code=400, detail="mode must be 'replace', 'add', or 'remove'")
+
+    return text_preprocessor.update_stopwords(request.category, request.words, request.mode)
+
+
+@router.post("/stopwords/reset")
+async def reset_stopwords(
+    category: str = "all",
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """ストップワードをデフォルトにリセット"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    if category == "all":
+        text_preprocessor.reset_stopwords("ja")
+        text_preprocessor.reset_stopwords("en")
+        text_preprocessor.reset_stopwords("custom")
+        return text_preprocessor.get_stopwords()
+    if category not in ("ja", "en", "custom"):
+        raise HTTPException(status_code=400, detail="category must be 'ja', 'en', 'custom', or 'all'")
+    return text_preprocessor.reset_stopwords(category)

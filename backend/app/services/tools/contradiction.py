@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
@@ -101,11 +100,13 @@ JSON配列で出力:
 矛盾が見つからない場合は空配列[]を返してください。"""
 
         try:
+            from app.services.tools import extract_json
+
             response = await llm_orchestrator.invoke(prompt, TaskType.LABELING, max_tokens=4096)
-            contradictions = json.loads(response.strip().strip("```json").strip("```"))
+            contradictions = extract_json(response)
             if not isinstance(contradictions, list):
                 contradictions = [contradictions] if contradictions else []
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.warning("contradiction_parse_failed", error=str(e))
             contradictions = []
 

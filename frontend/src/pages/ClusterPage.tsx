@@ -73,6 +73,7 @@ interface ScatterPoint {
   y: number;
   clusterId: number;
   isOutlier: boolean;
+  text: string;
 }
 
 /** クラスタ情報 */
@@ -82,6 +83,8 @@ interface ClusterInfo {
   size: number;
   keywords: string[];
   coherenceScore: number;
+  summary: string;
+  centroidTexts: string[];
 }
 
 /** 外れ値情報 */
@@ -130,7 +133,8 @@ function ClusterPage() {
 
       const data = response.data;
 
-      // UMAP座標 + クラスタ割当 → 散布図ポイント
+      // UMAP座標 + クラスタ割当 + テキスト → 散布図ポイント
+      const pointTexts = (data.point_texts as string[]) || [];
       const mappedPoints: ScatterPoint[] = (
         data.umap_coordinates as number[][]
       ).map((coord: number[], i: number) => ({
@@ -139,6 +143,7 @@ function ClusterPage() {
         y: coord[1],
         clusterId: (data.cluster_assignments as number[])[i],
         isOutlier: (data.cluster_assignments as number[])[i] === -1,
+        text: pointTexts[i] || "",
       }));
       setPoints(mappedPoints);
 
@@ -149,6 +154,8 @@ function ClusterPage() {
           title: string;
           keywords: string[];
           size: number;
+          summary: string;
+          centroid_texts: string[];
         }>
       ).map((c) => ({
         id: c.cluster_id,
@@ -156,6 +163,8 @@ function ClusterPage() {
         size: c.size,
         keywords: c.keywords,
         coherenceScore: data.silhouette_score as number,
+        summary: c.summary || "",
+        centroidTexts: c.centroid_texts || [],
       }));
       setClusters(mappedClusters);
 
@@ -490,7 +499,12 @@ function ClusterPage() {
                               : cluster?.label ??
                                 `クラスタ ${data.clusterId}`}
                           </p>
-                          <p className="text-gray-300 mt-1 text-xs">
+                          {data.text && (
+                            <p className="text-gray-200 mt-1.5 text-xs leading-relaxed border-t border-gray-700 pt-1.5">
+                              {data.text}
+                            </p>
+                          )}
+                          <p className="text-gray-400 mt-1 text-xs">
                             ({data.x.toFixed(2)}, {data.y.toFixed(2)})
                           </p>
                         </div>
@@ -564,6 +578,13 @@ function ClusterPage() {
                     </span>
                   </div>
 
+                  {/* LLM要約 */}
+                  {cluster.summary && (
+                    <p className="text-xs text-gray-600 dark:text-gray-300 mb-2 leading-relaxed">
+                      {cluster.summary}
+                    </p>
+                  )}
+
                   {/* キーワード */}
                   <div className="flex flex-wrap gap-1 mb-2">
                     {cluster.keywords.map((kw) => (
@@ -577,8 +598,24 @@ function ClusterPage() {
                     ))}
                   </div>
 
+                  {/* 代表テキスト */}
+                  {cluster.centroidTexts.length > 0 && (
+                    <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 space-y-1">
+                      <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">代表テキスト:</p>
+                      {cluster.centroidTexts.slice(0, 3).map((t, i) => (
+                        <p
+                          key={i}
+                          className="text-xs text-gray-500 dark:text-gray-400 truncate"
+                          title={t}
+                        >
+                          {t}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+
                   {/* コヒーレンススコア */}
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 mt-2">
                     <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-nexus-500"

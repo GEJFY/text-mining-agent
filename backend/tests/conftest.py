@@ -54,8 +54,9 @@ async def client():
     test_engine = create_async_engine(settings.database_url, echo=False)
     test_session_factory = async_sessionmaker(test_engine, class_=AsyncSession, expire_on_commit=False)
 
-    # テーブル作成
+    # テーブル再作成（テスト間データ分離のため drop → create）
     async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
 
     # get_db依存をテスト用セッションでオーバーライド

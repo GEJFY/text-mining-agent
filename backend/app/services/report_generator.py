@@ -1,7 +1,7 @@
 """レポート生成サービス
 
 テンプレートベースのレポート生成。PPTX/PDF/DOCX/Excel出力。
-エビデンスリンク自動付与、インライン編集対応。
+セクション別データルーティング、実エビデンス参照、セクション間コンテキスト共有。
 """
 
 import json
@@ -47,6 +47,86 @@ TEMPLATE_SECTIONS: dict[ReportTemplate, list[str]] = {
     ],
 }
 
+# セクション→分析タイプのマッピング
+SECTION_DATA_MAP: dict[str, list[str]] = {
+    # VOC
+    "エグゼクティブサマリー": [
+        "cluster",
+        "cluster_analysis",
+        "sentiment",
+        "sentiment_analysis",
+        "causal_chain_analysis",
+        "taxonomy_generation",
+    ],
+    "感情トレンド分析": ["sentiment", "sentiment_analysis"],
+    "クラスター分析結果": ["cluster", "cluster_analysis"],
+    "主要テーマ別詳細": [
+        "cluster",
+        "cluster_analysis",
+        "taxonomy_generation",
+        "cooccurrence",
+        "cooccurrence_analysis",
+    ],
+    "改善提案": [
+        "actionability_scoring",
+        "causal_chain_analysis",
+        "contradiction_detection",
+    ],
+    # AUDIT
+    "分析概要": [
+        "cluster",
+        "cluster_analysis",
+        "sentiment",
+        "sentiment_analysis",
+    ],
+    "主要発見事項": [
+        "cluster_analysis",
+        "causal_chain_analysis",
+        "contradiction_detection",
+        "taxonomy_generation",
+    ],
+    "リスク評価": [
+        "sentiment_analysis",
+        "actionability_scoring",
+        "causal_chain_analysis",
+    ],
+    "統制上の懸念点": [
+        "contradiction_detection",
+        "causal_chain_analysis",
+    ],
+    "推奨事項": ["actionability_scoring", "causal_chain_analysis"],
+    # COMPLIANCE
+    "調査概要": [
+        "cluster_analysis",
+        "sentiment_analysis",
+        "taxonomy_generation",
+    ],
+    "時系列分析": ["sentiment_analysis", "cluster_analysis"],
+    "キーワード共起分析": ["cooccurrence", "cooccurrence_analysis"],
+    "リスク分類": [
+        "taxonomy_generation",
+        "actionability_scoring",
+        "contradiction_detection",
+    ],
+    "結論と提言": ["actionability_scoring", "causal_chain_analysis"],
+    # RISK
+    "リスク分析概要": [
+        "cluster_analysis",
+        "sentiment_analysis",
+        "taxonomy_generation",
+    ],
+    "リスク分類別集計": ["taxonomy_generation", "cluster_analysis"],
+    "ヒートマップ分析": [
+        "sentiment_analysis",
+        "actionability_scoring",
+    ],
+    "優先対応事項": ["actionability_scoring", "causal_chain_analysis"],
+    "モニタリング計画": [
+        "causal_chain_analysis",
+        "contradiction_detection",
+    ],
+}
+
 
 class ReportGenerator:
     """レポート生成エンジン"""
@@ -71,8 +151,11 @@ class ReportGenerator:
         else:
             sections = TEMPLATE_SECTIONS.get(request.template, TEMPLATE_SECTIONS[ReportTemplate.VOC])
 
-        # LLMでセクションコンテンツを生成
-        report_content = await self._generate_sections(sections, analysis_data, request)
+        # エビデンステキストを事前抽出
+        evidence_pool = self._extract_evidence_texts(analysis_data)
+
+        # LLMでセクションコンテンツを生成（セクション間コンテキスト共有）
+        report_content = await self._generate_sections(sections, analysis_data, request, evidence_pool)
 
         # 出力形式に応じたファイル生成
         await self._export(report_id, report_content, request.output_format)
@@ -84,34 +167,236 @@ class ReportGenerator:
             generated_at=datetime.now(UTC),
         )
 
+    def _extract_evidence_texts(self, analysis_data: dict) -> list[dict]:
+        """分析データからエビデンステキストを収集"""
+        evidence = []
+        idx = 1
+
+        for atype, adata in analysis_data.items():
+            if not isinstance(adata, dict):
+                continue
+            result = adata.get("result", adata)
+
+            # クラスター分析の代表テキスト
+            for cluster in result.get("clusters", []):
+                for text in cluster.get("centroid_texts", [])[:2]:
+                    evidence.append(
+                        {
+                            "id": f"E-{idx}",
+                            "text": text[:200] if isinstance(text, str) else str(text)[:200],
+                            "source": atype,
+                            "context": f"クラスター「{cluster.get('title', '')}」",
+                        }
+                    )
+                    idx += 1
+
+            # 感情分析のハイライト
+            for h in result.get("highlights", []):
+                evidence.append(
+                    {
+                        "id": f"E-{idx}",
+                        "text": h.get("text", "")[:200],
+                        "source": atype,
+                        "context": f"感情: {h.get('sentiment', '')}",
+                    }
+                )
+                idx += 1
+
+            # 因果連鎖の説明
+            for chain in result.get("chains", []):
+                chain_str = " → ".join(chain.get("chain", []))
+                evidence.append(
+                    {
+                        "id": f"E-{idx}",
+                        "text": chain.get("explanation", chain_str)[:200],
+                        "source": atype,
+                        "context": f"因果連鎖: {chain_str[:50]}",
+                    }
+                )
+                idx += 1
+
+            # 矛盾検出
+            for c in result.get("contradictions", []):
+                evidence.append(
+                    {
+                        "id": f"E-{idx}",
+                        "text": f"{c.get('statement_a', '')} vs {c.get('statement_b', '')}",
+                        "source": atype,
+                        "context": f"矛盾: {c.get('contradiction_type', '')}",
+                    }
+                )
+                idx += 1
+
+            # アクショナビリティ上位
+            for item in result.get("items", [])[:5]:
+                if item.get("score", 0) >= 0.7:
+                    evidence.append(
+                        {
+                            "id": f"E-{idx}",
+                            "text": item.get("text_preview", "")[:200],
+                            "source": atype,
+                            "context": f"アクション優先度: {item.get('score', 0):.1f}",
+                        }
+                    )
+                    idx += 1
+
+        return evidence[:30]  # 最大30件
+
+    def _format_section_data(self, section_title: str, analysis_data: dict) -> str:
+        """セクションに関連する分析データを人間可読な要約に変換"""
+        relevant_types = SECTION_DATA_MAP.get(section_title, [])
+        parts = []
+
+        for atype in relevant_types:
+            adata = analysis_data.get(atype)
+            if not adata or not isinstance(adata, dict):
+                continue
+            result = adata.get("result", adata)
+
+            if atype in ("cluster", "cluster_analysis"):
+                clusters = result.get("clusters", [])
+                if clusters:
+                    lines = [f"[クラスター分析] {len(clusters)}クラスター検出"]
+                    for c in clusters[:8]:
+                        title = c.get("title", f"Cluster {c.get('cluster_id', '?')}")
+                        size = c.get("size", 0)
+                        summary = c.get("summary", "")[:100]
+                        lines.append(f"  - {title} ({size}件): {summary}")
+                    parts.append("\n".join(lines))
+
+            elif atype in ("sentiment", "sentiment_analysis"):
+                dist = result.get("distribution", {})
+                highlights = result.get("highlights", [])
+                if dist or highlights:
+                    lines = ["[感情分析]"]
+                    if dist:
+                        for k, v in dist.items():
+                            lines.append(f"  - {k}: {v}")
+                    for h in highlights[:5]:
+                        lines.append(f"  ★ {h.get('text', '')[:80]} → {h.get('sentiment', '')}")
+                    parts.append("\n".join(lines))
+
+            elif atype in ("cooccurrence", "cooccurrence_analysis"):
+                nodes = result.get("nodes", [])
+                communities = result.get("communities", {})
+                if nodes:
+                    top5 = sorted(nodes, key=lambda n: n.get("degree_centrality", 0), reverse=True)[:5]
+                    lines = [f"[共起ネットワーク] {len(nodes)}ノード"]
+                    for n in top5:
+                        lines.append(f"  - {n.get('word', '')}: 出現{n.get('frequency', 0)}回")
+                    for cid, words in list(communities.items())[:3]:
+                        lines.append(f"  コミュニティ{cid}: {', '.join(words[:5])}")
+                    parts.append("\n".join(lines))
+
+            elif atype == "causal_chain_analysis":
+                chains = result.get("chains", [])
+                if chains:
+                    lines = [f"[因果連鎖] {len(chains)}チェーン検出"]
+                    for c in chains[:5]:
+                        arrow = " → ".join(c.get("chain", []))
+                        lines.append(f"  - {arrow} (確信度: {c.get('confidence', 0):.1f})")
+                    parts.append("\n".join(lines))
+
+            elif atype == "contradiction_detection":
+                contradictions = result.get("contradictions", [])
+                if contradictions:
+                    lines = [f"[矛盾検出] {len(contradictions)}件"]
+                    for c in contradictions[:5]:
+                        lines.append(
+                            f"  - [{c.get('contradiction_type', '')}] "
+                            f"{c.get('statement_a', '')[:60]} ⇔ {c.get('statement_b', '')[:60]}"
+                        )
+                    parts.append("\n".join(lines))
+
+            elif atype == "actionability_scoring":
+                items = result.get("items", [])
+                if items:
+                    lines = [f"[アクショナビリティ] {len(items)}件評価"]
+                    top = sorted(items, key=lambda x: x.get("score", 0), reverse=True)[:5]
+                    for item in top:
+                        lines.append(
+                            f"  - [{item.get('category', '')}] スコア{item.get('score', 0):.1f}: "
+                            f"{item.get('text_preview', '')[:60]}"
+                        )
+                    parts.append("\n".join(lines))
+
+            elif atype == "taxonomy_generation":
+                root = result.get("root_categories", [])
+                if root:
+                    lines = [f"[タクソノミー] {len(root)}カテゴリ"]
+                    for cat in root[:6]:
+                        children = cat.get("children", [])
+                        sub = ", ".join(c.get("name", "") for c in children[:3])
+                        line = f"  - {cat.get('name', '')}: {cat.get('text_count', 0)}件"
+                        if sub:
+                            line += f" → {sub}"
+                        lines.append(line)
+                    parts.append("\n".join(lines))
+
+        if not parts:
+            # フォールバック: 全データの簡略表示
+            available = [k for k in analysis_data if isinstance(analysis_data[k], dict)]
+            if available:
+                return f"利用可能な分析: {', '.join(available)}\n（セクション用の詳細データなし）"
+            return "分析データなし"
+
+        return "\n\n".join(parts)
+
     async def _generate_sections(
         self,
         sections: list[str],
         analysis_data: dict,
         request: ReportRequest,
+        evidence_pool: list[dict],
     ) -> list[dict]:
-        """各セクションのコンテンツをLLMで生成"""
+        """各セクションのコンテンツをLLMで生成（セクション間コンテキスト共有）"""
         contents = []
+        prior_context = ""
+
+        # エビデンスプールのテキスト表現
+        evidence_block = ""
+        if evidence_pool:
+            evidence_lines = []
+            for ev in evidence_pool:
+                evidence_lines.append(f"[{ev['id']}] ({ev['context']}) {ev['text']}")
+            evidence_block = "\n".join(evidence_lines)
 
         for section_title in sections:
+            section_data = self._format_section_data(section_title, analysis_data)
+
             prompt = f"""テキストマイニング分析レポートの「{section_title}」セクションを作成してください。
 
 分析データ:
-{json.dumps(analysis_data, ensure_ascii=False, default=str)[:3000]}
+{section_data}
 
-要件:
+"""
+            if evidence_block:
+                prompt += f"""エビデンス一覧（[ID]形式で参照可能）:
+{evidence_block}
+
+"""
+            if prior_context:
+                prompt += f"""前セクションまでの要約:
+{prior_context}
+
+"""
+            prompt += f"""要件:
 - ビジネスパーソン向けの明確な文章
 - データに基づく具体的な記述
-- 各記述にはエビデンス（根拠テキスト）の参照を含める
+- エビデンスは[E-N]形式で参照を含める
+- 前セクションの内容と整合性を保つ
 - 200-400字程度
 
 JSON形式:
-{{"title": "{section_title}", "content": "...", "evidence_refs": ["根拠1", "根拠2"]}}"""
+{{"title": "{section_title}", "content": "...", "evidence_refs": ["E-1", "E-3"]}}"""
 
             try:
-                response = await self.llm.invoke(prompt, TaskType.SUMMARIZATION, max_tokens=1000)
+                response = await self.llm.invoke(prompt, TaskType.SUMMARIZATION, max_tokens=1500)
                 data = json.loads(response.strip().strip("```json").strip("```"))
                 contents.append(data)
+                # 次セクション用にコンテキスト蓄積
+                content_text = data.get("content", "")
+                prior_context += f"【{section_title}】{content_text[:200]}\n"
             except Exception as e:
                 logger.warning("section_generation_failed", section=section_title, error=str(e))
                 contents.append(

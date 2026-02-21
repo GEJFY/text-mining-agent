@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import apiClient from '../api/client';
+import { agentApi, reportsApi } from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
 import DatasetGuard from '../components/DatasetGuard';
 
@@ -39,6 +40,11 @@ export default function AgentPage() {
   const [insights, setInsights] = useState<Insight[]>([]);
   const [pendingApproval, setPendingApproval] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [pipelineResult, setPipelineResult] = useState<{
+    reportId?: string;
+    downloadUrl?: string;
+    jobCount?: number;
+  } | null>(null);
 
   const startAnalysis = async () => {
     setLoading(true);
@@ -75,6 +81,45 @@ export default function AgentPage() {
       console.error(e);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const runPipeline = async () => {
+    setLoading(true);
+    setPipelineResult(null);
+    try {
+      const res = await agentApi.pipeline({
+        dataset_id: activeDatasetId!,
+        objective,
+      });
+      setAgentId(res.data.agent_id);
+      setInsights(res.data.insights || []);
+      setLogs([]);
+      setState('completed');
+      setPipelineResult({
+        reportId: res.data.report_id,
+        downloadUrl: res.data.report_download_url,
+        jobCount: res.data.analysis_jobs?.length ?? 0,
+      });
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const downloadReport = async () => {
+    if (!pipelineResult?.reportId) return;
+    try {
+      const res = await reportsApi.download(pipelineResult.reportId);
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `nexustext_report.pdf`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error(e);
     }
   };
 
@@ -131,13 +176,22 @@ export default function AgentPage() {
             </select>
           </div>
         </div>
-        <button
-          onClick={startAnalysis}
-          disabled={loading || !activeDatasetId}
-          className="mt-4 px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors"
-        >
-          {loading ? '分析中...' : '分析開始'}
-        </button>
+        <div className="flex gap-3 mt-4">
+          <button
+            onClick={startAnalysis}
+            disabled={loading || !activeDatasetId}
+            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {loading ? '分析中...' : '分析開始'}
+          </button>
+          <button
+            onClick={runPipeline}
+            disabled={loading || !activeDatasetId}
+            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+          >
+            {loading ? '実行中...' : '自動パイプライン（分析→レポート）'}
+          </button>
+        </div>
       </div>
 
       {/* 推論フェーズ進捗 */}
@@ -203,6 +257,26 @@ export default function AgentPage() {
               キャンセル
             </button>
           </div>
+        </div>
+      )}
+
+      {/* パイプライン結果 */}
+      {pipelineResult && (
+        <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-emerald-800 dark:text-emerald-200 mb-2">
+            パイプライン完了
+          </h3>
+          <p className="text-emerald-700 dark:text-emerald-300 text-sm mb-3">
+            {pipelineResult.jobCount}件の分析ジョブが実行されました。
+          </p>
+          {pipelineResult.downloadUrl && (
+            <button
+              onClick={downloadReport}
+              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+            >
+              レポートをダウンロード
+            </button>
+          )}
         </div>
       )}
 

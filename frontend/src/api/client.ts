@@ -228,10 +228,11 @@ export const cooccurrenceApi = {
 /** AIエージェント関連API */
 export const agentApi = {
   /** エージェント分析を開始 */
-  start: (datasetId: string, objective?: string) =>
+  start: (datasetId: string, objective?: string, hitlMode?: string) =>
     apiClient.post("/agent/start", {
       dataset_id: datasetId,
       objective: objective ?? "",
+      hitl_mode: hitlMode ?? "full_auto",
     }),
 
   /** HITL承認を送信 */
@@ -242,6 +243,14 @@ export const agentApi = {
 
   /** エージェントのログを取得 */
   logs: (agentId: string) => apiClient.get(`/agent/${agentId}/logs`),
+
+  /** Agent→Analysis→Report自動パイプライン */
+  pipeline: (params: {
+    dataset_id: string;
+    objective?: string;
+    template?: string;
+    output_format?: string;
+  }) => apiClient.post("/agent/pipeline", params),
 };
 
 /** レポート関連API */

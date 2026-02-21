@@ -36,6 +36,7 @@ async def test_causal_chain_endpoint(client):
 
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
         patch("app.services.analysis_registry.AnalysisToolRegistry.execute", new_callable=AsyncMock) as mock_exec,
     ):
         mock_cache.get = AsyncMock(return_value=None)
@@ -72,6 +73,7 @@ async def test_contradiction_endpoint(client):
 
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
         patch("app.services.analysis_registry.AnalysisToolRegistry.execute", new_callable=AsyncMock) as mock_exec,
     ):
         mock_cache.get = AsyncMock(return_value=None)
@@ -106,6 +108,7 @@ async def test_actionability_endpoint(client):
 
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
         patch("app.services.analysis_registry.AnalysisToolRegistry.execute", new_callable=AsyncMock) as mock_exec,
     ):
         mock_cache.get = AsyncMock(return_value=None)
@@ -139,6 +142,7 @@ async def test_taxonomy_endpoint(client):
 
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
         patch("app.services.analysis_registry.AnalysisToolRegistry.execute", new_callable=AsyncMock) as mock_exec,
     ):
         mock_cache.get = AsyncMock(return_value=None)

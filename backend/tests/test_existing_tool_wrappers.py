@@ -4,14 +4,15 @@
 definition()のメタデータを検証。
 
 NOTE: numpy/pandas等の重い科学計算ライブラリがテスト環境にないため、
-モジュールレベルでsys.modulesをモック。__init__.pyのimport chainを回避。
+インポートに失敗するモジュールのみsys.modulesをモック。
+CI環境（依存あり）では実モジュールを使用し、他テストへの副作用を防止。
 """
 
 import sys
 from unittest.mock import AsyncMock, MagicMock, patch
 
 # ===================================================================
-# 重い依存モジュールをインポート前にモック（コレクション時に必要）
+# 重い依存モジュールをインポート前にモック（ImportError時のみ）
 # ===================================================================
 _HEAVY_DEPS = [
     "numpy", "numpy.linalg",
@@ -30,7 +31,10 @@ _HEAVY_DEPS = [
 
 for _mod_name in _HEAVY_DEPS:
     if _mod_name not in sys.modules:
-        sys.modules[_mod_name] = MagicMock()
+        try:
+            __import__(_mod_name)
+        except ImportError:
+            sys.modules[_mod_name] = MagicMock()
 
 # ===================================================================
 # ここからimport

@@ -8,22 +8,32 @@ from app.models.schemas import ClusterAlgorithm
 
 
 @pytest.fixture
-async def seeded_client(client):
+async def seeded_client(client, request):
     """テスト用データセット + テキストレコードをDBに投入済みのクライアント"""
+    from sqlalchemy import select
+
     from app.core.database import get_db
     from app.main import app
     from app.models.orm import Dataset, TextRecord
+
+    # テストごとにユニークなIDを使用
+    ds_id = f"ds-persist-{request.node.name[:20]}"
 
     # get_dbオーバーライドからセッションを取得
     db_gen = app.dependency_overrides[get_db]()
     db = await db_gen.__anext__()
 
-    ds = Dataset(id="ds-persist-001", name="test", file_name="test.csv", total_rows=3)
-    db.add(ds)
-    for i, text in enumerate(["テスト文1", "テスト文2", "テスト文3"]):
-        db.add(TextRecord(dataset_id="ds-persist-001", row_index=i, text_content=text))
-    await db.commit()
+    # 既存チェック
+    existing = await db.execute(select(Dataset).where(Dataset.id == ds_id))
+    if not existing.scalar_one_or_none():
+        ds = Dataset(id=ds_id, name="test", file_name="test.csv", total_rows=3)
+        db.add(ds)
+        for i, text in enumerate(["テスト文1", "テスト文2", "テスト文3"]):
+            db.add(TextRecord(dataset_id=ds_id, row_index=i, text_content=text))
+        await db.commit()
 
+    # テストにds_idを渡すためclientにアタッチ
+    client._test_dataset_id = ds_id
     yield client
 
 
@@ -84,7 +94,7 @@ async def test_cluster_saves_analysis_job(seeded_client):
 
         res = await seeded_client.post(
             "/api/v1/analysis/cluster",
-            json={"dataset_id": "ds-persist-001", "algorithm": "kmeans", "n_clusters": 2},
+            json={"dataset_id": seeded_client._test_dataset_id, "algorithm": "kmeans", "n_clusters": 2},
         )
         assert res.status_code == 200
 
@@ -97,10 +107,14 @@ async def test_cluster_saves_analysis_job(seeded_client):
 
     db_gen = app.dependency_overrides[get_db]()
     db = await db_gen.__anext__()
-    result = await db.execute(select(AnalysisJob).where(AnalysisJob.dataset_id == "ds-persist-001"))
-    jobs = result.scalars().all()
-    assert len(jobs) >= 1
-    job = jobs[0]
+    result = await db.execute(
+        select(AnalysisJob).where(
+            AnalysisJob.dataset_id == seeded_client._test_dataset_id,
+            AnalysisJob.analysis_type == "cluster",
+        )
+    )
+    job = result.scalar_one_or_none()
+    assert job is not None
     assert job.analysis_type == "cluster"
     assert job.status == "completed"
     assert job.completed_at is not None
@@ -116,7 +130,7 @@ async def test_sentiment_saves_analysis_job(seeded_client):
 
         res = await seeded_client.post(
             "/api/v1/analysis/sentiment",
-            json={"dataset_id": "ds-persist-001"},
+            json={"dataset_id": seeded_client._test_dataset_id},
         )
         assert res.status_code == 200
 
@@ -130,7 +144,7 @@ async def test_sentiment_saves_analysis_job(seeded_client):
     db = await db_gen.__anext__()
     result = await db.execute(
         select(AnalysisJob).where(
-            AnalysisJob.dataset_id == "ds-persist-001",
+            AnalysisJob.dataset_id == seeded_client._test_dataset_id,
             AnalysisJob.analysis_type == "sentiment",
         )
     )
@@ -147,7 +161,7 @@ async def test_cooccurrence_saves_analysis_job(seeded_client):
 
         res = await seeded_client.post(
             "/api/v1/analysis/cooccurrence",
-            json={"dataset_id": "ds-persist-001"},
+            json={"dataset_id": seeded_client._test_dataset_id},
         )
         assert res.status_code == 200
 
@@ -161,7 +175,7 @@ async def test_cooccurrence_saves_analysis_job(seeded_client):
     db = await db_gen.__anext__()
     result = await db.execute(
         select(AnalysisJob).where(
-            AnalysisJob.dataset_id == "ds-persist-001",
+            AnalysisJob.dataset_id == seeded_client._test_dataset_id,
             AnalysisJob.analysis_type == "cooccurrence",
         )
     )

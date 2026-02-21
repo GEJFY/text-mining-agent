@@ -40,24 +40,18 @@ async def test_agent_full_auto_completes(agent_context, mock_tool_result):
     """full_autoモードでエージェントが完了まで実行される"""
     # LLMレスポンスモック
     observe_response = json.dumps(
-        {
-            "statistics": {"total_texts": 3},
-            "initial_observations": ["テストデータ"],
-            "suggested_focus": "品質",
-        },
+        ["テストデータに偏りがある", "品質に関する記述が多い", "ネガティブ傾向"],
         ensure_ascii=False,
     )
 
     hypothesize_response = json.dumps(
-        [
-            {"hypothesis": "品質に問題がある", "testable_by": ["cluster_analysis"]},
-        ],
+        ["品質に問題があるのではないか？", "対応速度に不満があるのではないか？"],
         ensure_ascii=False,
     )
 
     tool_selection_response = json.dumps(
         [
-            {"tool_name": "cluster_analysis", "parameters": {}, "reason": "テスト"},
+            {"hypothesis_index": 0, "tool_name": "cluster_analysis", "parameters": {}},
         ],
         ensure_ascii=False,
     )
@@ -65,10 +59,11 @@ async def test_agent_full_auto_completes(agent_context, mock_tool_result):
     verify_response = json.dumps(
         [
             {
-                "hypothesis": "品質に問題がある",
+                "hypothesis": "品質に問題があるのではないか？",
                 "support_score": 0.8,
+                "supporting_evidence": ["クラスター分析で確認"],
+                "counter_evidence": [],
                 "verdict": "supported",
-                "evidence_summary": "クラスター分析で確認",
             },
         ],
         ensure_ascii=False,
@@ -100,7 +95,7 @@ async def test_agent_full_auto_completes(agent_context, mock_tool_result):
         )
         mock_llm_cls.return_value = mock_llm
 
-        with patch("app.agents.analysis_agent.analysis_registry") as mock_registry:
+        with patch("app.services.analysis_registry.analysis_registry") as mock_registry:
             mock_registry.list_tools_for_llm.return_value = [
                 {"name": "cluster_analysis", "description": "テスト", "parameters": [], "category": "clustering"},
             ]
@@ -125,18 +120,12 @@ async def test_agent_semi_auto_pauses_for_approval():
     )
 
     observe_response = json.dumps(
-        {
-            "statistics": {"total_texts": 1},
-            "initial_observations": ["テスト"],
-            "suggested_focus": "テスト",
-        },
+        ["テストデータの観測結果"],
         ensure_ascii=False,
     )
 
     hypothesize_response = json.dumps(
-        [
-            {"hypothesis": "仮説A", "testable_by": ["cluster_analysis"]},
-        ],
+        ["仮説A: テストに関する問題があるのではないか？"],
         ensure_ascii=False,
     )
 

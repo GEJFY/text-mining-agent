@@ -102,7 +102,7 @@ async def test_execute_not_found():
     registry = AnalysisToolRegistry()
     result = await registry.execute("nonexistent", "ds-001", None)
     assert result.success is False
-    assert "見つかりません" in (result.error or "")
+    assert "Unknown tool" in (result.error or "")
 
 
 @pytest.mark.asyncio

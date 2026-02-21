@@ -8,21 +8,28 @@ from app.models.schemas import PipelineRequest
 
 
 @pytest.fixture
-async def seeded_client(client):
+async def seeded_client(client, request):
     """テスト用データセットを投入済みクライアント"""
+    from sqlalchemy import select
+
     from app.core.database import get_db
     from app.main import app
     from app.models.orm import Dataset, TextRecord
 
+    ds_id = f"ds-pipe-{request.node.name[:20]}"
+
     db_gen = app.dependency_overrides[get_db]()
     db = await db_gen.__anext__()
 
-    ds = Dataset(id="ds-pipe-001", name="pipe_test", file_name="test.csv", total_rows=3)
-    db.add(ds)
-    for i, text in enumerate(["パイプラインテスト1", "パイプラインテスト2", "パイプラインテスト3"]):
-        db.add(TextRecord(dataset_id="ds-pipe-001", row_index=i, text_content=text))
-    await db.commit()
+    existing = await db.execute(select(Dataset).where(Dataset.id == ds_id))
+    if not existing.scalar_one_or_none():
+        ds = Dataset(id=ds_id, name="pipe_test", file_name="test.csv", total_rows=3)
+        db.add(ds)
+        for i, text in enumerate(["パイプラインテスト1", "パイプラインテスト2", "パイプラインテスト3"]):
+            db.add(TextRecord(dataset_id=ds_id, row_index=i, text_content=text))
+        await db.commit()
 
+    client._test_dataset_id = ds_id
     yield client
 
 
@@ -59,7 +66,7 @@ async def test_pipeline_endpoint(seeded_client):
         res = await seeded_client.post(
             "/api/v1/agent/pipeline",
             json={
-                "dataset_id": "ds-pipe-001",
+                "dataset_id": seeded_client._test_dataset_id,
                 "objective": "テスト分析",
             },
         )

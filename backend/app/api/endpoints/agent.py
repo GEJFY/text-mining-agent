@@ -137,4 +137,4 @@ async def run_analysis_pipeline(
     from app.services.pipeline import run_pipeline
 
     result = await run_pipeline(request, db)
-    return result.to_dict()
+    return result.model_dump()

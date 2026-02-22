@@ -31,3 +31,18 @@ class TestSecurityHeaders:
         res = await client.get("/api/v1/dashboard/summary")
         for header, value in EXPECTED_HEADERS.items():
             assert res.headers.get(header) == value, f"Missing or wrong header: {header}"
+
+    @pytest.mark.asyncio
+    async def test_error_response_has_security_headers(self, client: AsyncClient) -> None:
+        """エラーレスポンス(404)にもセキュリティヘッダーが付与"""
+        res = await client.get("/api/v1/nonexistent-endpoint")
+        for header, value in EXPECTED_HEADERS.items():
+            assert res.headers.get(header) == value, f"Missing or wrong header on 404: {header}"
+
+    @pytest.mark.asyncio
+    async def test_csp_header_present(self, client: AsyncClient) -> None:
+        """Content-Security-Policyヘッダーが存在する"""
+        res = await client.get("/health")
+        csp = res.headers.get("content-security-policy")
+        assert csp is not None, "CSP header missing"
+        assert "default-src" in csp

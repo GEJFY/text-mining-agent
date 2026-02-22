@@ -80,5 +80,5 @@ backend/venv/
 # Ruff
 .ruff_cache/
 
-# Backend test duplicates
-backend/tests/tests/
+# Backend generated reports
+backend/reports/

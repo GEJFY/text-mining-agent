@@ -1,8 +1,8 @@
 # NexusText AI v7.0 機能仕様書・API仕様書
 
 **バージョン**: 7.0.0
-**最終更新日**: 2026-02-12
-**ステータス**: Draft
+**最終更新日**: 2026-02-23
+**ステータス**: Active
 
 ---
 
@@ -40,6 +40,7 @@ NexusText AI は、大量のテキストデータに対して自律的にクラ�
 | 共起ネットワーク | 共起行列、Louvainコミュニティ検知、中心性指標、時間スライス分析 |
 | 自律型AIエージェント | 5フェーズ推論ループ、HITL制御 (Full Auto/Semi Auto/Guided)、Groundingスコア |
 | レポート生成 | PPTX/PDF/DOCX/Excel出力、テンプレート (VOC/Audit/Compliance/Risk/Custom) |
+| 因果連鎖・矛盾検出 | 因果関係の自動抽出、論理的矛盾の検出、アクショナビリティスコアリング、タクソノミー自動生成 |
 | LLMオーケストレーション | マルチモデル自動選択、サーキットブレーカー、データ機密度ルーティング |
 | マルチクラウド | AWS / Azure / GCP / Local対応、API Gateway抽象化 |
 
@@ -1786,6 +1787,56 @@ def get_api_gateway() -> BaseAPIGateway:
 | 次元数 | 384 |
 | 対応言語 | 多言語 (日本語含む) |
 | UMAP次元削減 | 2次元、metric=`"cosine"`、random_state=`42` |
+
+---
+
+## 10. Sprint 18 更新履歴 (2026-02-23)
+
+### 10.1 UX改善
+
+| 項目 | 内容 |
+|---|---|
+| カラムマッピングUI | 左=分析フィールド（テキスト本文[必須]、ID、日付、カテゴリ、著者、ソース）、右=CSVカラム選択。未マッピングカラムは自動で「属性」として取り込み |
+| 統合ボタン | 「AI分析を開始」1ボタンに統合。チェックボックス「分析完了後にレポートを自動生成する」で分析/パイプライン切替 |
+| InfoTooltip | クラスタリングページの全パラメータ（シルエットスコア、UMAP、コヒーレンス、セントロイド距離）にホバー説明追加 |
+| メニューグループ化 | サイドバーを「基本分析」「高度な分析」「管理」に折りたたみ可能グループ化 |
+
+### 10.2 エージェント強化
+
+| 項目 | 内容 |
+|---|---|
+| 進捗ポーリング | 3秒間隔でGET /agent/{agent_id}/logsをポーリング。5フェーズ（観測→仮説→探索→検証→統合）のアニメーション表示 |
+| セッション永続化 | AgentSessionテーブル（id, dataset_id, objective, insights, logs, status, created_at）でDB保存。POST /{agent_id}/save、GET /sessions/list、GET /sessions/{id} |
+| タブ遷移保持 | Zustand storeにagentSessionState追加。ページ離脱→復帰時に進捗画面を自動復元、running状態ならポーリング再開 |
+
+### 10.3 エラーハンドリング
+
+| 項目 | 内容 |
+|---|---|
+| 日本語エラーメッセージ | 空ファイル、マッピング不正、文字コードエラー等を個別キャッチし日本語メッセージ付きFileProcessingError送出 |
+| correlation_id | 全エラーレスポンスにcorrelation_id（先頭8文字）を表示。ユーザーがサポートに伝達可能 |
+
+### 10.4 レポート生成
+
+| 項目 | 内容 |
+|---|---|
+| PDF日本語対応 | IPAexフォント検索パスを拡張。Docker環境ではfonts-ipaexfontパッケージ使用 |
+| 動的タイトル | LLMでテンプレート種別+データ概要から20字程度のタイトルを自動生成 |
+| カスタムプロンプト | レポート生成UIにtextareaを追加。テンプレート標準プロンプトをベースにカスタマイズ可能 |
+
+### 10.5 データモデル追加
+
+```sql
+CREATE TABLE agent_sessions (
+    id VARCHAR PRIMARY KEY,
+    dataset_id VARCHAR REFERENCES datasets(id),
+    objective TEXT,
+    insights JSON,
+    logs JSON,
+    status VARCHAR DEFAULT 'completed',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+```
 
 ---
 

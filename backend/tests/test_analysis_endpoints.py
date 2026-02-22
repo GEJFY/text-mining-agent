@@ -1,7 +1,8 @@
 """分析エンドポイントテスト
 
-4つの新LLM分析エンドポイント (causal-chain, contradiction, actionability, taxonomy) の
-HTTP 200レスポンス形式を検証。analysis_registry.execute をモックして高速テスト。
+LLM分析エンドポイント (causal-chain, contradiction, actionability, taxonomy,
+cluster, sentiment, cooccurrence) のHTTP 200レスポンス形式を検証。
+analysis_registry.execute をモックして高速テスト。
 """
 
 from unittest.mock import AsyncMock, patch
@@ -224,3 +225,90 @@ async def test_endpoint_failure_response(client):
     body = resp.json()
     assert body["success"] is False
     assert body["error"] == "解析失敗"
+
+
+@pytest.mark.asyncio
+async def test_cluster_endpoint(client):
+    """POST /analysis/cluster → 200"""
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis.ClusteringService") as mock_svc_cls,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_svc = AsyncMock()
+        mock_svc.run.return_value = {
+            "clusters": [],
+            "scatter": [],
+            "silhouette_score": 0.5,
+        }
+        mock_svc_cls.return_value = mock_svc
+
+        resp = await client.post(
+            "/api/v1/analysis/cluster",
+            json={
+                "dataset_id": "ds-001",
+                "algorithm": "kmeans",
+                "n_clusters": 3,
+            },
+        )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sentiment_endpoint(client):
+    """POST /analysis/sentiment → 200"""
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis.SentimentService") as mock_svc_cls,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_svc = AsyncMock()
+        mock_svc.run.return_value = {
+            "results": [],
+            "distribution": {},
+        }
+        mock_svc_cls.return_value = mock_svc
+
+        resp = await client.post(
+            "/api/v1/analysis/sentiment",
+            json={
+                "dataset_id": "ds-001",
+                "mode": "basic",
+            },
+        )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cooccurrence_endpoint(client):
+    """POST /analysis/cooccurrence → 200"""
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis.CooccurrenceService") as mock_svc_cls,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_svc = AsyncMock()
+        mock_svc.run.return_value = {
+            "nodes": [],
+            "edges": [],
+            "communities": [],
+        }
+        mock_svc_cls.return_value = mock_svc
+
+        resp = await client.post(
+            "/api/v1/analysis/cooccurrence",
+            json={
+                "dataset_id": "ds-001",
+                "min_frequency": 2,
+            },
+        )
+
+    assert resp.status_code == 200

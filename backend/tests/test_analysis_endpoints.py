@@ -54,7 +54,7 @@ async def test_causal_chain_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "chains" in body
     assert "summary" in body
 
 
@@ -91,7 +91,7 @@ async def test_contradiction_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "contradictions" in body
 
 
 @pytest.mark.asyncio
@@ -126,7 +126,7 @@ async def test_actionability_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "items" in body
 
 
 @pytest.mark.asyncio
@@ -161,7 +161,7 @@ async def test_taxonomy_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "root_categories" in body
 
 
 @pytest.mark.asyncio

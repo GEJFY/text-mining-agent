@@ -8,6 +8,9 @@ vi.mock("../../api/client", () => ({
   taxonomyApi: {
     run: vi.fn(),
   },
+  datasetsApi: {
+    getAttributes: vi.fn().mockResolvedValue({ data: { attributes: [] } }),
+  },
 }));
 
 import { taxonomyApi } from "../../api/client";

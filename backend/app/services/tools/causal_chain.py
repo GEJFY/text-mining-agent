@@ -6,7 +6,6 @@ LLMで構造的に抽出する。
 
 from __future__ import annotations
 
-import json
 import random
 from typing import TYPE_CHECKING, Any
 
@@ -115,11 +114,13 @@ JSON配列で出力:
 }}]"""
 
         try:
+            from app.services.tools import extract_json
+
             response = await llm_orchestrator.invoke(prompt, TaskType.LABELING, max_tokens=4096)
-            chains = json.loads(response.strip().strip("```json").strip("```"))
+            chains = extract_json(response)
             if not isinstance(chains, list):
                 chains = [chains]
-        except (json.JSONDecodeError, Exception) as e:
+        except Exception as e:
             logger.warning("causal_chain_parse_failed", error=str(e))
             chains = []
 

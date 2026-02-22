@@ -13,6 +13,7 @@ from app.core.security import (
     create_access_token,
     get_current_user,
     hash_password,
+    require_role,
     verify_password,
 )
 from app.models.orm import User
@@ -147,3 +148,89 @@ async def get_me(
         role=current_user.role.value,
         tenant_id=current_user.tenant_id,
     )
+
+
+# === 管理者専用エンドポイント ===
+
+
+@router.get("/users")
+async def list_users(
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """ユーザー一覧（管理者のみ）"""
+    result = await db.execute(select(User).order_by(User.created_at.desc()))
+    users = result.scalars().all()
+    return {
+        "users": [
+            {
+                "id": u.id,
+                "email": u.email,
+                "display_name": u.display_name,
+                "role": u.role,
+                "is_active": u.is_active,
+                "created_at": u.created_at.isoformat() if u.created_at else None,
+            }
+            for u in users
+        ]
+    }
+
+
+class RoleUpdateRequest(BaseModel):
+    role: str
+
+
+@router.put("/users/{user_id}/role")
+async def update_user_role(
+    user_id: str,
+    body: RoleUpdateRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """ユーザーのロール変更（管理者のみ）"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if body.role not in ("admin", "analyst", "viewer"):
+        raise HTTPException(status_code=400, detail="Invalid role")
+    user.role = body.role
+    await db.flush()
+    return {"success": True, "user_id": user_id, "role": body.role}
+
+
+@router.put("/users/{user_id}/active")
+async def toggle_user_active(
+    user_id: str,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """ユーザーの有効/無効切替（管理者のみ）"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.is_active = not user.is_active
+    await db.flush()
+    return {"success": True, "user_id": user_id, "is_active": user.is_active}
+
+
+class PasswordResetRequest(BaseModel):
+    new_password: str
+
+
+@router.post("/users/{user_id}/reset-password")
+async def reset_user_password(
+    user_id: str,
+    body: PasswordResetRequest,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN)),
+) -> dict:
+    """ユーザーのパスワードリセット（管理者のみ）"""
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    user.hashed_password = hash_password(body.new_password)
+    await db.flush()
+    return {"success": True, "user_id": user_id}

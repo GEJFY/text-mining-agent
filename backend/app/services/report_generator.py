@@ -157,8 +157,11 @@ class ReportGenerator:
         # LLMでセクションコンテンツを生成（セクション間コンテキスト共有）
         report_content = await self._generate_sections(sections, analysis_data, request, evidence_pool)
 
+        # 動的タイトル生成
+        title = await self._generate_title(request, analysis_data)
+
         # 出力形式に応じたファイル生成
-        await self._export(report_id, report_content, request.output_format)
+        await self._export(report_id, report_content, request.output_format, title=title)
 
         return ReportResponse(
             report_id=report_id,
@@ -166,6 +169,41 @@ class ReportGenerator:
             format=request.output_format,
             generated_at=datetime.now(UTC),
         )
+
+    async def _generate_title(self, request: ReportRequest, analysis_data: dict) -> str:
+        """分析内容に基づく動的レポートタイトルを生成"""
+        template_name = request.template.value if hasattr(request.template, "value") else str(request.template)
+        data_summary = []
+        for _atype, adata in analysis_data.items():
+            if isinstance(adata, dict):
+                result = adata.get("result", adata)
+                clusters = result.get("clusters", [])
+                if clusters:
+                    data_summary.append(f"クラスター{len(clusters)}件")
+                dist = result.get("distribution", {})
+                if dist:
+                    data_summary.append("感情分布あり")
+                chains = result.get("chains", [])
+                if chains:
+                    data_summary.append(f"因果連鎖{len(chains)}件")
+
+        context = ", ".join(data_summary[:5]) if data_summary else "テキストマイニング"
+        custom_hint = f" ユーザー指示: {request.custom_prompt[:100]}" if request.custom_prompt else ""
+
+        prompt = f"""以下の分析レポートに最適な日本語タイトル（20文字程度）を1つだけ出力してください。
+テンプレート: {template_name}
+分析概要: {context}{custom_hint}
+タイトルのみ出力（括弧や引用符なし）:"""
+
+        try:
+            title = await self.llm.invoke(prompt, TaskType.LABELING, max_tokens=60)
+            title = title.strip().strip('"「」').strip()
+            if title and len(title) <= 60:
+                return title
+        except Exception as e:
+            logger.warning("title_generation_failed", error=str(e))
+
+        return f"{template_name}分析レポート"
 
     def _extract_evidence_texts(self, analysis_data: dict) -> list[dict]:
         """分析データからエビデンステキストを収集"""
@@ -364,8 +402,12 @@ class ReportGenerator:
         for section_title in sections:
             section_data = self._format_section_data(section_title, analysis_data)
 
-            prompt = f"""テキストマイニング分析レポートの「{section_title}」セクションを作成してください。
+            custom_context = ""
+            if request.custom_prompt:
+                custom_context = f"\nユーザー指示:\n{request.custom_prompt}\n"
 
+            prompt = f"""テキストマイニング分析レポートの「{section_title}」セクションを作成してください。
+{custom_context}
 分析データ:
 {section_data}
 
@@ -421,19 +463,32 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         except json.JSONDecodeError:
             return ["概要", "分析結果", "考察", "推奨事項"]
 
-    async def _export(self, report_id: str, contents: list[dict], fmt: ReportFormat) -> Path:
+    async def _export(
+        self,
+        report_id: str,
+        contents: list[dict],
+        fmt: ReportFormat,
+        *,
+        title: str = "NexusText AI 分析レポート",
+    ) -> Path:
         """各形式でファイルを出力"""
         if fmt == ReportFormat.PPTX:
-            return await self._export_pptx(report_id, contents)
+            return await self._export_pptx(report_id, contents, title=title)
         elif fmt == ReportFormat.PDF:
-            return await self._export_pdf(report_id, contents)
+            return await self._export_pdf(report_id, contents, title=title)
         elif fmt == ReportFormat.DOCX:
-            return await self._export_docx(report_id, contents)
+            return await self._export_docx(report_id, contents, title=title)
         elif fmt == ReportFormat.EXCEL:
             return await self._export_excel(report_id, contents)
         raise ValueError(f"Unknown format: {fmt}")
 
-    async def _export_pptx(self, report_id: str, contents: list[dict]) -> Path:
+    async def _export_pptx(
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
+    ) -> Path:
         """PowerPoint出力"""
         from pptx import Presentation
 
@@ -441,7 +496,7 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
 
         # タイトルスライド
         slide = prs.slides.add_slide(prs.slide_layouts[0])
-        slide.shapes.title.text = "NexusText AI 分析レポート"
+        slide.shapes.title.text = title
 
         for section in contents:
             slide = prs.slides.add_slide(prs.slide_layouts[1])
@@ -453,34 +508,79 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         prs.save(str(path))
         return path
 
-    async def _export_pdf(self, report_id: str, contents: list[dict]) -> Path:
-        """PDF出力"""
+    async def _export_pdf(
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
+    ) -> Path:
+        """PDF出力（CJKフォント対応）"""
         from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+
+        # CJKフォント登録（IPAexGothic → MSGothic のフォールバック）
+        cjk_font = "Helvetica"
+        font_candidates = [
+            ("/usr/share/fonts/truetype/ipaexfont-gothic/ipaexg.ttf", "IPAexGothic"),
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "NotoSansCJK"),
+            ("C:/Windows/Fonts/msgothic.ttc", "MSGothic"),
+            ("C:/Windows/Fonts/YuGothM.ttc", "YuGothic"),
+        ]
+        tried_paths = []
+        for font_path, font_name in font_candidates:
+            tried_paths.append(font_path)
+            if Path(font_path).exists():
+                try:
+                    pdfmetrics.registerFont(TTFont(font_name, font_path))
+                    cjk_font = font_name
+                    logger.info("pdf_font_registered", font=font_name, path=font_path)
+                    break
+                except Exception as e:
+                    logger.warning("pdf_font_register_failed", font=font_name, error=str(e))
+                    continue
+
+        if cjk_font == "Helvetica":
+            logger.warning("pdf_no_cjk_font", tried_paths=tried_paths, fallback="Helvetica")
 
         path = self.output_dir / f"{report_id}.pdf"
         doc = SimpleDocTemplate(str(path), pagesize=A4)
         styles = getSampleStyleSheet()
-        story = []
 
-        story.append(Paragraph("NexusText AI 分析レポート", styles["Title"]))
+        title_style = ParagraphStyle("CJKTitle", parent=styles["Title"], fontName=cjk_font, fontSize=16)
+        heading_style = ParagraphStyle("CJKHeading", parent=styles["Heading2"], fontName=cjk_font, fontSize=13)
+        normal_style = ParagraphStyle("CJKNormal", parent=styles["Normal"], fontName=cjk_font, fontSize=10, leading=16)
+
+        story = []
+        title_escaped = title.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        story.append(Paragraph(title_escaped, title_style))
         story.append(Spacer(1, 20))
 
         for section in contents:
-            story.append(Paragraph(section.get("title", ""), styles["Heading2"]))
-            story.append(Paragraph(section.get("content", ""), styles["Normal"]))
+            title = section.get("title", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            content = section.get("content", "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            story.append(Paragraph(title, heading_style))
+            story.append(Paragraph(content, normal_style))
             story.append(Spacer(1, 12))
 
         doc.build(story)
         return path
 
-    async def _export_docx(self, report_id: str, contents: list[dict]) -> Path:
+    async def _export_docx(
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
+    ) -> Path:
         """Word出力"""
         from docx import Document
 
         doc = Document()
-        doc.add_heading("NexusText AI 分析レポート", level=0)
+        doc.add_heading(title, level=0)
 
         for section in contents:
             doc.add_heading(section.get("title", ""), level=1)

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAnalysisStore } from "../../stores/analysisStore";
+import { datasetsApi } from "../../api/client";
 import {
   LayoutDashboard,
   Upload,
@@ -13,6 +14,7 @@ import {
   Sun,
   ChevronLeft,
   ChevronRight,
+  ChevronDown,
   Sparkles,
   Menu,
   LogOut,
@@ -20,6 +22,8 @@ import {
   AlertTriangle,
   Target,
   FolderTree,
+  Users,
+  BookOpen,
 } from "lucide-react";
 import { useAuthStore } from "../../stores/authStore";
 
@@ -51,43 +55,43 @@ const navItems: NavItem[] = [
     path: "/analysis/cluster",
     label: "クラスタ分析",
     icon: <Layers size={20} />,
-    group: "分析",
+    group: "基本分析",
   },
   {
     path: "/analysis/sentiment",
     label: "センチメント分析",
     icon: <Heart size={20} />,
-    group: "分析",
+    group: "基本分析",
   },
   {
     path: "/analysis/cooccurrence",
     label: "共起ネットワーク",
     icon: <Network size={20} />,
-    group: "分析",
+    group: "基本分析",
   },
   {
     path: "/analysis/causal-chain",
     label: "因果連鎖分析",
     icon: <GitBranch size={20} />,
-    group: "分析",
+    group: "高度な分析",
   },
   {
     path: "/analysis/contradiction",
     label: "矛盾検出",
     icon: <AlertTriangle size={20} />,
-    group: "分析",
+    group: "高度な分析",
   },
   {
     path: "/analysis/actionability",
     label: "アクショナビリティ",
     icon: <Target size={20} />,
-    group: "分析",
+    group: "高度な分析",
   },
   {
     path: "/analysis/taxonomy",
     label: "タクソノミー生成",
     icon: <FolderTree size={20} />,
-    group: "分析",
+    group: "高度な分析",
   },
   {
     path: "/agent",
@@ -99,15 +103,68 @@ const navItems: NavItem[] = [
     label: "レポート生成",
     icon: <FileText size={20} />,
   },
+  {
+    path: "/admin/users",
+    label: "ユーザー管理",
+    icon: <Users size={20} />,
+    group: "管理",
+  },
 ];
+
+/** 折りたたみ可能なグループ名 */
+const COLLAPSIBLE_GROUPS = ["基本分析", "高度な分析"];
 
 function AppLayout() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { darkMode, toggleDarkMode } = useAnalysisStore();
+  const { darkMode, toggleDarkMode, datasets, setDatasets, activeDatasetId, setActiveDataset } = useAnalysisStore();
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // グループ展開状態（localStorageで永続化）
+  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem("nexustext-nav-groups");
+      if (saved) return JSON.parse(saved);
+    } catch { /* ignore */ }
+    return { "基本分析": true, "高度な分析": true };
+  });
+
+  const toggleGroup = (group: string) => {
+    setExpandedGroups((prev) => {
+      const next = { ...prev, [group]: !prev[group] };
+      localStorage.setItem("nexustext-nav-groups", JSON.stringify(next));
+      return next;
+    });
+  };
+
+  // 起動時にパレット設定を復元
+  useEffect(() => {
+    const palette = localStorage.getItem("nexustext-palette");
+    if (palette === "indigo") {
+      document.documentElement.setAttribute("data-palette", "indigo");
+    }
+  }, []);
+
+  // 起動時にデータセット一覧を取得
+  useEffect(() => {
+    datasetsApi.list().then((res) => {
+      const list = (res.data.datasets ?? []).map((d: { id: string; name: string; total_rows: number; text_column: string; created_at: string; status: string }) => ({
+        id: d.id,
+        name: d.name,
+        rowCount: d.total_rows,
+        columnCount: 0,
+        textColumn: d.text_column ?? "",
+        createdAt: d.created_at ?? "",
+        status: d.status ?? "ready",
+      }));
+      setDatasets(list);
+      if (!activeDatasetId && list.length > 0) {
+        setActiveDataset(list[0].id);
+      }
+    }).catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleLogout = () => {
     logout();
@@ -178,49 +235,93 @@ function AppLayout() {
 
         {/* ナビゲーション */}
         <nav className="flex-1 overflow-y-auto py-4 px-2">
-          {groupedItems.map((group, groupIdx) => (
-            <div key={groupIdx} className="mb-2">
-              {/* グループラベル */}
-              {group.group && !sidebarCollapsed && (
-                <div className="px-3 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
-                  {group.group}
-                </div>
-              )}
-              {group.group && sidebarCollapsed && (
-                <div className="mx-auto my-2 w-6 border-t border-gray-200 dark:border-gray-700" />
-              )}
+          {groupedItems.map((group, groupIdx) => {
+            const isCollapsible = group.group !== null && COLLAPSIBLE_GROUPS.includes(group.group);
+            const isExpanded = !isCollapsible || expandedGroups[group.group!] !== false;
 
-              {/* ナビゲーションリンク */}
-              {group.items.map((item) => (
-                <NavLink
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileMenuOpen(false)}
-                  className={({ isActive }) =>
-                    `flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5
-                     transition-colors duration-200
-                     ${
-                       isActive
-                         ? "bg-nexus-50 dark:bg-nexus-950 text-nexus-700 dark:text-nexus-300 font-medium"
-                         : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
-                     }
-                     ${sidebarCollapsed ? "justify-center" : ""}
-                    `
-                  }
-                  title={sidebarCollapsed ? item.label : undefined}
-                >
-                  <span className="flex-shrink-0">{item.icon}</span>
-                  {!sidebarCollapsed && (
-                    <span className="text-sm truncate">{item.label}</span>
-                  )}
-                </NavLink>
-              ))}
-            </div>
-          ))}
+            return (
+              <div key={groupIdx} className="mb-2">
+                {/* グループラベル（折りたたみ対応） */}
+                {group.group && !sidebarCollapsed && (
+                  isCollapsible ? (
+                    <button
+                      onClick={() => toggleGroup(group.group!)}
+                      className="w-full flex items-center justify-between px-3 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
+                    >
+                      <span>{group.group}</span>
+                      <ChevronDown
+                        size={14}
+                        className={`transition-transform duration-200 ${isExpanded ? "" : "-rotate-90"}`}
+                      />
+                    </button>
+                  ) : (
+                    <div className="px-3 py-2 text-xs font-semibold text-gray-400 dark:text-gray-500 uppercase tracking-wider">
+                      {group.group}
+                    </div>
+                  )
+                )}
+                {group.group && sidebarCollapsed && (
+                  <div className="mx-auto my-2 w-6 border-t border-gray-200 dark:border-gray-700" />
+                )}
+
+                {/* ナビゲーションリンク（折りたたみ時は非表示） */}
+                {(isExpanded || sidebarCollapsed) && group.items.map((item) => (
+                  <NavLink
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={({ isActive }) =>
+                      `flex items-center gap-3 px-3 py-2.5 rounded-lg mb-0.5
+                       transition-colors duration-200
+                       ${
+                         isActive
+                           ? "bg-nexus-50 dark:bg-nexus-950 text-nexus-700 dark:text-nexus-300 font-medium"
+                           : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-gray-200"
+                       }
+                       ${sidebarCollapsed ? "justify-center" : ""}
+                      `
+                    }
+                    title={sidebarCollapsed ? item.label : undefined}
+                  >
+                    <span className="flex-shrink-0">{item.icon}</span>
+                    {!sidebarCollapsed && (
+                      <span className="text-sm truncate">{item.label}</span>
+                    )}
+                  </NavLink>
+                ))}
+              </div>
+            );
+          })}
         </nav>
 
         {/* サイドバー下部 */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-2">
+          {/* カラーパレット切替 */}
+          {!sidebarCollapsed && (
+            <div className="flex items-center gap-2 px-3 py-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400">テーマ:</span>
+              {[
+                { id: "pwc", color: "#D04A02", label: "PwC" },
+                { id: "indigo", color: "#6366f1", label: "Indigo" },
+              ].map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    if (p.id === "indigo") {
+                      document.documentElement.setAttribute("data-palette", "indigo");
+                    } else {
+                      document.documentElement.removeAttribute("data-palette");
+                    }
+                    localStorage.setItem("nexustext-palette", p.id);
+                  }}
+                  className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
+                  style={{ backgroundColor: p.color }}
+                  title={p.label}
+                />
+              ))}
+            </div>
+          )}
+
           {/* ダークモード切替 */}
           <button
             onClick={toggleDarkMode}
@@ -273,8 +374,33 @@ function AppLayout() {
             {currentPageTitle}
           </h1>
 
+          {/* データセットセレクタ */}
+          {datasets.length > 0 && (
+            <select
+              value={activeDatasetId ?? ""}
+              onChange={(e) => setActiveDataset(e.target.value || null)}
+              className="ml-4 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-3 py-1.5 max-w-[200px] truncate"
+            >
+              <option value="">データセット選択</option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.name} ({d.rowCount}行)
+                </option>
+              ))}
+            </select>
+          )}
+
           {/* ヘッダー右側 */}
           <div className="ml-auto flex items-center gap-3">
+            <a
+              href="/docs/user-manual.pdf"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="btn-ghost"
+              title="ユーザーマニュアル"
+            >
+              <BookOpen size={18} />
+            </a>
             {user && (
               <span className="text-sm text-gray-600 dark:text-gray-400 hidden sm:inline">
                 {user.display_name}

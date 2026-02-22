@@ -15,6 +15,7 @@ class ModelMapping:
     bedrock: str | None = None
     azure: str | None = None
     vertex_ai: str | None = None
+    gemini_direct: str | None = None
     local: str | None = None
 
 
@@ -53,11 +54,13 @@ DEFAULT_MODEL_MAPPINGS: dict[str, ModelMapping] = {
         logical_name="gemini-3.0-pro",
         direct="gemini-3.0-pro",
         vertex_ai="gemini-3-pro-preview",
+        gemini_direct="gemini-2.0-pro",
     ),
     "gemini-3.0-flash": ModelMapping(
         logical_name="gemini-3.0-flash",
         direct="gemini-3.0-flash",
         vertex_ai="gemini-3-flash-preview",
+        gemini_direct="gemini-2.0-flash",
     ),
     "llama-4-405b": ModelMapping(
         logical_name="llama-4-405b",
@@ -94,6 +97,7 @@ class ModelRegistry:
             "aws_bedrock": mapping.bedrock,
             "azure_ai_foundry": mapping.azure,
             "gcp_vertex_ai": mapping.vertex_ai,
+            "gemini_direct": mapping.gemini_direct,
             "local": mapping.local,
         }
         return mode_to_field.get(deployment_mode)

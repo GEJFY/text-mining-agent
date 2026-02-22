@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import apiClient from '../api/client';
+import apiClient, { reportsApi } from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
 import DatasetGuard from '../components/DatasetGuard';
 import { handleApiError } from '../utils/handleApiError';
@@ -13,6 +13,15 @@ const TEMPLATES = [
   { value: 'custom', label: 'カスタムレポート', description: '自由なプロンプトで構成' },
 ];
 
+/* テンプレート別プロンプトひな型 */
+const TEMPLATE_PROMPTS: Record<string, string> = {
+  voc: '顧客の声（VOC）を分析し、感情トレンド・主要テーマ・改善提案をまとめてください。特に顧客満足度に影響する要因を重点的に分析してください。',
+  audit: '内部監査の観点から、発見事項・リスク評価・統制上の懸念点・推奨事項をまとめてください。重要度と緊急度を明示してください。',
+  compliance: 'コンプライアンスの観点から、時系列での変化・キーワード共起による関連性・リスク分類・改善提言をまとめてください。',
+  risk: 'リスク分析の観点から、リスク分類・影響度評価・優先対応事項・モニタリング計画をまとめてください。リスクの相互関連も分析してください。',
+  custom: '',
+};
+
 const FORMATS = [
   { value: 'pdf', label: 'PDF', icon: '📄' },
   { value: 'pptx', label: 'PowerPoint', icon: '📊' },
@@ -24,7 +33,7 @@ export default function ReportsPage() {
   const { activeDatasetId } = useAnalysisStore();
   const [template, setTemplate] = useState('voc');
   const [format, setFormat] = useState('pdf');
-  const [customPrompt, setCustomPrompt] = useState('');
+  const [customPrompt, setCustomPrompt] = useState(TEMPLATE_PROMPTS['voc']);
   const [includeEvidence, setIncludeEvidence] = useState(true);
   const [generating, setGenerating] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -37,7 +46,7 @@ export default function ReportsPage() {
         dataset_id: activeDatasetId,
         template,
         output_format: format,
-        custom_prompt: template === 'custom' ? customPrompt : null,
+        custom_prompt: customPrompt || undefined,
         include_evidence_links: includeEvidence,
       });
       setResult(res.data);
@@ -66,7 +75,10 @@ export default function ReportsPage() {
               {TEMPLATES.map((t) => (
                 <button
                   key={t.value}
-                  onClick={() => setTemplate(t.value)}
+                  onClick={() => {
+                    setTemplate(t.value);
+                    setCustomPrompt(TEMPLATE_PROMPTS[t.value] ?? '');
+                  }}
                   className={`text-left p-4 rounded-lg border-2 transition-colors ${
                     template === t.value
                       ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30'
@@ -80,21 +92,22 @@ export default function ReportsPage() {
             </div>
           </div>
 
-          {/* カスタムプロンプト */}
-          {template === 'custom' && (
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
-                カスタムプロンプト
-              </h2>
-              <textarea
-                value={customPrompt}
-                onChange={(e) => setCustomPrompt(e.target.value)}
-                rows={4}
-                className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm p-3 border"
-                placeholder="このデータから○○の観点でレポートを作成してください..."
-              />
-            </div>
-          )}
+          {/* レポートプロンプト（全テンプレートで編集可能） */}
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-2">
+              レポート指示プロンプト
+            </h2>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+              テンプレートの標準プロンプトをベースに、自由にカスタマイズできます。LLMはこの指示に従ってレポートを生成します。
+            </p>
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              rows={4}
+              className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm p-3 border text-sm"
+              placeholder="このデータから○○の観点でレポートを作成してください..."
+            />
+          </div>
 
           {/* 出力形式 */}
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
@@ -174,12 +187,25 @@ export default function ReportsPage() {
                       {r.generated_at ? new Date(r.generated_at).toLocaleString('ja-JP') : ''}
                     </p>
                   </div>
-                  <a
-                    href={r.download_url}
+                  <button
+                    onClick={async () => {
+                      try {
+                        const res = await reportsApi.download(r.report_id);
+                        const blob = new Blob([res.data]);
+                        const url = URL.createObjectURL(blob);
+                        const a = document.createElement("a");
+                        a.href = url;
+                        a.download = `report-${r.report_id?.slice(0, 8)}.${r.format || "pdf"}`;
+                        a.click();
+                        URL.revokeObjectURL(url);
+                      } catch {
+                        handleApiError(null, "ダウンロードに失敗しました");
+                      }
+                    }}
                     className="text-sm text-indigo-600 hover:text-indigo-800 dark:text-indigo-400"
                   >
                     ダウンロード
-                  </a>
+                  </button>
                 </div>
               </div>
             ))}

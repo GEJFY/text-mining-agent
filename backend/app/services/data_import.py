@@ -51,7 +51,9 @@ class DataImportService:
         ext = Path(file_name).suffix.lower()
 
         if ext not in self.SUPPORTED_EXTENSIONS:
-            raise ValueError(f"Unsupported file format: {ext}")
+            raise ValueError(
+                f"非対応のファイル形式です（{ext}）。対応形式: CSV, TSV, Excel, TXT, PDF, DOCX, JSON, JSONL"
+            )
 
         # 文字コード検出
         if not encoding:
@@ -89,6 +91,16 @@ class DataImportService:
             if len(str_cols) > 0:
                 avg_lens = {col: df[col].dropna().str.len().mean() for col in str_cols}
                 text_col = max(avg_lens, key=avg_lens.get)  # type: ignore
+
+        if text_col is None:
+            raise ValueError(
+                "テキスト本文カラムが見つかりません。CSVファイルに文字列データを含むカラムがあることを確認してください。"
+            )
+
+        if len(df) == 0:
+            raise ValueError(
+                "ファイルにデータ行が含まれていません。ヘッダー行の下にデータがあることを確認してください。"
+            )
 
         char_count_stats = {}
         if text_col and text_col in df.columns:
@@ -204,8 +216,12 @@ class DataImportService:
             return pd.json_normalize(data)
 
 
-async def get_texts_by_dataset(dataset_id: str, db: AsyncSession) -> tuple[list[str], list[str], list[str | None]]:
-    """データセットからテキスト、レコードID、日付を取得"""
+async def get_texts_by_dataset(
+    dataset_id: str,
+    db: AsyncSession,
+    filters: dict | None = None,
+) -> tuple[list[str], list[str], list[str | None]]:
+    """データセットからテキスト、レコードID、日付を取得（属性フィルタ対応）"""
     from sqlalchemy import select
 
     from app.models.orm import TextRecord
@@ -214,6 +230,39 @@ async def get_texts_by_dataset(dataset_id: str, db: AsyncSession) -> tuple[list[
         select(TextRecord).where(TextRecord.dataset_id == dataset_id).order_by(TextRecord.row_index)
     )
     records = result.scalars().all()
+
+    # 属性フィルタリング（JSONカラムのためPython側で実行）
+    if filters:
+        filtered = []
+        for r in records:
+            match = True
+            attrs = r.attributes or {}
+            for key, condition in filters.items():
+                val = attrs.get(key, "")
+                if isinstance(condition, list):
+                    # カテゴリフィルタ: 選択値のいずれかに一致
+                    if str(val) not in condition:
+                        match = False
+                        break
+                elif isinstance(condition, dict):
+                    # 数値レンジフィルタ: {"min": x, "max": y}
+                    try:
+                        num_val = float(val)
+                        if "min" in condition and num_val < condition["min"]:
+                            match = False
+                            break
+                        if "max" in condition and num_val > condition["max"]:
+                            match = False
+                            break
+                    except (ValueError, TypeError):
+                        match = False
+                        break
+                elif isinstance(condition, str) and condition and condition.lower() not in str(val).lower():
+                    match = False
+                    break
+            if match:
+                filtered.append(r)
+        records = filtered
 
     texts = [r.text_content for r in records]
     record_ids = [r.id for r in records]

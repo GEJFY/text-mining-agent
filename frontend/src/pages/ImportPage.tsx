@@ -25,10 +25,10 @@ import { useAnalysisStore } from "../stores/analysisStore";
  * 実API接続 + インポート結果表示
  */
 
-/** カラムマッピング設定 */
+/** カラムマッピング設定（分析フィールド → CSVカラム） */
 interface ColumnMapping {
-  sourceColumn: string;
-  targetField: string;
+  analysisField: string;
+  csvColumn: string | null;
 }
 
 /** プレビューデータ行 */
@@ -46,15 +46,14 @@ interface ImportResult {
   preview: Record<string, unknown>[];
 }
 
-// マッピング先フィールド
-const TARGET_FIELDS = [
-  { value: "text", label: "テキスト本文" },
-  { value: "date", label: "日付" },
-  { value: "category", label: "カテゴリ" },
-  { value: "author", label: "著者" },
-  { value: "source", label: "ソース" },
-  { value: "id", label: "ID" },
-  { value: "ignore", label: "無視する" },
+// 分析フィールド定義（左側に固定表示）
+const ANALYSIS_FIELDS = [
+  { key: "text", label: "テキスト本文", required: true, description: "分析対象のテキストカラム" },
+  { key: "id", label: "ID", required: false, description: "レコード識別子" },
+  { key: "date", label: "日付", required: false, description: "時系列分析に使用" },
+  { key: "category", label: "カテゴリ", required: false, description: "カテゴリ別分析に使用" },
+  { key: "author", label: "著者", required: false, description: "著者別フィルタに使用" },
+  { key: "source", label: "ソース", required: false, description: "ソース別フィルタに使用" },
 ];
 
 function ImportPage() {
@@ -152,12 +151,12 @@ function ImportPage() {
             rows.reduce((sum, row) => sum + (row[col]?.length ?? 0), 0) / Math.max(rows.length, 1);
           return { col, avgLen };
         });
-        const textCol = autoMappings.sort((a, b) => b.avgLen - a.avgLen)[0]?.col;
+        const detectedTextCol = autoMappings.sort((a, b) => b.avgLen - a.avgLen)[0]?.col;
 
         setMappings(
-          cols.map((col) => ({
-            sourceColumn: col,
-            targetField: col === textCol ? "text" : "ignore",
+          ANALYSIS_FIELDS.map((field) => ({
+            analysisField: field.key,
+            csvColumn: field.key === "text" ? (detectedTextCol ?? null) : null,
           }))
         );
 
@@ -188,10 +187,10 @@ function ImportPage() {
   };
 
   // マッピング更新
-  const updateMapping = (sourceColumn: string, targetField: string) => {
+  const updateMapping = (analysisField: string, csvColumn: string | null) => {
     setMappings((prev) =>
       prev.map((m) =>
-        m.sourceColumn === sourceColumn ? { ...m, targetField } : m
+        m.analysisField === analysisField ? { ...m, csvColumn } : m
       )
     );
   };
@@ -200,14 +199,35 @@ function ImportPage() {
   const handleImport = async () => {
     if (!uploadedFile) return;
 
-    const textMapping = mappings.find((m) => m.targetField === "text");
+    const textMapping = mappings.find((m) => m.analysisField === "text");
 
     setStep("importing");
     setError(null);
 
+    // バックエンド用column_mappingsを構築
+    const roleMap: Record<string, string> = {
+      text: "text", date: "date", id: "id",
+      category: "attribute", author: "attribute", source: "attribute",
+    };
+    const backendMappings = mappings
+      .filter((m) => m.csvColumn)
+      .map((m) => ({
+        column_name: m.csvColumn!,
+        role: roleMap[m.analysisField] ?? "attribute",
+      }));
+
+    // 未マッピングカラムもattributeとして送信
+    const mappedCols = new Set(mappings.filter((m) => m.csvColumn).map((m) => m.csvColumn));
+    for (const col of columns) {
+      if (!mappedCols.has(col)) {
+        backendMappings.push({ column_name: col, role: "attribute" });
+      }
+    }
+
     try {
       const res = await datasetsApi.upload(uploadedFile, {
-        textColumn: textMapping?.sourceColumn,
+        textColumn: textMapping?.csvColumn ?? undefined,
+        columnMappings: backendMappings.length > 0 ? backendMappings : undefined,
       });
 
       const result: ImportResult = res.data;
@@ -219,7 +239,7 @@ function ImportPage() {
         name: uploadedFile.name,
         rowCount: result.total_rows,
         columnCount: Object.keys(result.preview[0] ?? {}).length,
-        textColumn: textMapping?.sourceColumn ?? "",
+        textColumn: textMapping?.csvColumn ?? "",
         createdAt: new Date().toISOString(),
         status: "ready",
       });
@@ -227,13 +247,17 @@ function ImportPage() {
 
       setStep("complete");
     } catch (e: unknown) {
-      const axiosError = e as { response?: { data?: { detail?: string }; status?: number }; message?: string };
-      const detail =
+      const axiosError = e as { response?: { data?: { detail?: string; correlation_id?: string; filename?: string }; status?: number }; message?: string };
+      let detail =
         axiosError.response?.data?.detail ??
         axiosError.message ??
         "インポート中にエラーが発生しました";
+      const correlationId = axiosError.response?.data?.correlation_id;
+      if (correlationId) {
+        detail += `（エラーID: ${correlationId.slice(0, 8)}）`;
+      }
       setError(detail);
-      setStep("preview"); // エラー時はプレビューに戻す
+      setStep("mapping"); // エラー時はマッピングに戻して再操作可能に
     }
   };
 
@@ -438,58 +462,105 @@ function ImportPage() {
             {columns.length > 0 ? (
               <>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
-                  各カラムの用途を指定してください。「テキスト本文」は必須です。
+                  各分析フィールドに対応するCSVカラムを選択してください。「テキスト本文」は必須です。
                 </p>
 
                 <div className="space-y-3">
-                  {mappings.map((mapping) => (
-                    <div
-                      key={mapping.sourceColumn}
-                      className="flex items-center gap-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
-                    >
-                      <div className="w-1/3">
-                        <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                          {mapping.sourceColumn}
-                        </span>
+                  {ANALYSIS_FIELDS.map((field) => {
+                    const mapping = mappings.find((m) => m.analysisField === field.key);
+                    const assignedColumns = mappings
+                      .filter((m) => m.csvColumn !== null && m.analysisField !== field.key)
+                      .map((m) => m.csvColumn);
+                    const availableColumns = columns.filter(
+                      (col) => !assignedColumns.includes(col)
+                    );
+
+                    return (
+                      <div
+                        key={field.key}
+                        className="flex items-center gap-4 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                      >
+                        <div className="w-2/5 flex items-center gap-2">
+                          <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                            {field.label}
+                          </span>
+                          {field.required ? (
+                            <span className="text-xs px-1.5 py-0.5 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded font-medium">
+                              必須
+                            </span>
+                          ) : (
+                            <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded">
+                              任意
+                            </span>
+                          )}
+                        </div>
+                        <ChevronDown
+                          size={16}
+                          className="text-gray-400 -rotate-90 flex-shrink-0"
+                        />
+                        <div className="w-2/5">
+                          <select
+                            value={mapping?.csvColumn ?? ""}
+                            onChange={(e) =>
+                              updateMapping(field.key, e.target.value || null)
+                            }
+                            className="input-field text-sm py-1.5"
+                          >
+                            <option value="">-- 選択しない --</option>
+                            {availableColumns.map((col) => (
+                              <option key={col} value={col}>
+                                {col}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div className="flex-shrink-0">
+                          {mapping?.csvColumn ? (
+                            <Check size={18} className="text-emerald-500" />
+                          ) : field.required ? (
+                            <AlertTriangle size={18} className="text-amber-400" />
+                          ) : (
+                            <span className="w-[18px]" />
+                          )}
+                        </div>
                       </div>
-                      <ChevronDown
-                        size={16}
-                        className="text-gray-400 -rotate-90 flex-shrink-0"
-                      />
-                      <div className="w-1/3">
-                        <select
-                          value={mapping.targetField}
-                          onChange={(e) =>
-                            updateMapping(mapping.sourceColumn, e.target.value)
-                          }
-                          className="input-field text-sm py-1.5"
-                        >
-                          {TARGET_FIELDS.map((field) => (
-                            <option key={field.value} value={field.value}>
-                              {field.label}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex-shrink-0">
-                        {mapping.targetField === "text" ? (
-                          <Check size={18} className="text-emerald-500" />
-                        ) : mapping.targetField === "ignore" ? (
-                          <AlertTriangle size={18} className="text-amber-400" />
-                        ) : (
-                          <Check size={18} className="text-blue-400" />
-                        )}
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
 
-                {!mappings.some((m) => m.targetField === "text") && (
+                {/* 自動取り込み属性表示 */}
+                {(() => {
+                  const mappedCols = mappings.filter((m) => m.csvColumn).map((m) => m.csvColumn);
+                  const unmappedCols = columns.filter((c) => !mappedCols.includes(c));
+                  if (unmappedCols.length === 0) return null;
+                  return (
+                    <div className="mt-4 p-3 rounded-lg bg-blue-50 dark:bg-blue-950 border border-blue-200 dark:border-blue-800">
+                      <p className="text-sm font-medium text-blue-700 dark:text-blue-300 mb-2">
+                        その他の属性（自動取り込み）
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {unmappedCols.map((col) => (
+                          <span
+                            key={col}
+                            className="px-2 py-1 rounded text-xs bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-400"
+                          >
+                            {col}
+                          </span>
+                        ))}
+                      </div>
+                      <p className="text-xs text-blue-500 dark:text-blue-400 mt-2">
+                        これらのカラムは属性として自動的にインポートされ、分析時のフィルタに使用できます。
+                      </p>
+                    </div>
+                  );
+                })()}
+
+                {!mappings.find((m) => m.analysisField === "text")?.csvColumn && (
                   <div className="mt-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
                     <div className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
                       <AlertTriangle size={16} />
                       <span className="text-sm font-medium">
-                        テキスト本文に対応するカラムを1つ選択してください
+                        テキスト本文に対応するCSVカラムを選択してください
                       </span>
                     </div>
                   </div>
@@ -515,7 +586,7 @@ function ImportPage() {
                 <button
                   onClick={() => setStep("preview")}
                   className="btn-primary"
-                  disabled={!mappings.some((m) => m.targetField === "text")}
+                  disabled={!mappings.find((m) => m.analysisField === "text")?.csvColumn}
                 >
                   <Eye size={16} />
                   プレビュー
@@ -553,24 +624,22 @@ function ImportPage() {
                   <tr className="bg-gray-50 dark:bg-gray-800/50">
                     {columns.map((col) => {
                       const mapping = mappings.find(
-                        (m) => m.sourceColumn === col
+                        (m) => m.csvColumn === col
                       );
+                      const fieldDef = mapping
+                        ? ANALYSIS_FIELDS.find((f) => f.key === mapping.analysisField)
+                        : null;
                       return (
                         <th
                           key={col}
                           className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider"
                         >
                           <div>{col}</div>
-                          {mapping &&
-                            mapping.targetField !== "ignore" && (
-                              <span className="badge-positive mt-1 text-xs normal-case">
-                                {
-                                  TARGET_FIELDS.find(
-                                    (f) => f.value === mapping.targetField
-                                  )?.label
-                                }
-                              </span>
-                            )}
+                          {fieldDef && (
+                            <span className="badge-positive mt-1 text-xs normal-case">
+                              {fieldDef.label}
+                            </span>
+                          )}
                         </th>
                       );
                     })}
@@ -616,8 +685,8 @@ function ImportPage() {
                   テキストカラム:
                 </span>
                 <p className="font-medium text-gray-900 dark:text-white mt-0.5">
-                  {mappings.find((m) => m.targetField === "text")
-                    ?.sourceColumn ?? "未選択"}
+                  {mappings.find((m) => m.analysisField === "text")
+                    ?.csvColumn ?? "未選択"}
                 </p>
               </div>
               <div>
@@ -625,8 +694,7 @@ function ImportPage() {
                   使用カラム数:
                 </span>
                 <p className="font-medium text-gray-900 dark:text-white mt-0.5">
-                  {mappings.filter((m) => m.targetField !== "ignore").length}{" "}
-                  / {columns.length}
+                  {columns.length} / {columns.length}（全カラム取り込み）
                 </p>
               </div>
             </div>

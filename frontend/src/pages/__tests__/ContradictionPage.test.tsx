@@ -8,6 +8,9 @@ vi.mock("../../api/client", () => ({
   contradictionApi: {
     run: vi.fn(),
   },
+  datasetsApi: {
+    getAttributes: vi.fn().mockResolvedValue({ data: { attributes: [] } }),
+  },
 }));
 
 import { contradictionApi } from "../../api/client";

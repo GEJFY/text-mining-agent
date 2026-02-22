@@ -66,6 +66,20 @@ class TextRecord(Base):
     dataset: Mapped["Dataset"] = relationship(back_populates="text_records")
 
 
+class AgentSession(Base):
+    """エージェント分析セッションテーブル（結果永続化用）"""
+
+    __tablename__ = "agent_sessions"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    dataset_id: Mapped[str] = mapped_column(String(36), ForeignKey("datasets.id", ondelete="CASCADE"), index=True)
+    objective: Mapped[str] = mapped_column(Text, default="")
+    insights: Mapped[dict] = mapped_column(JSON, default=list)
+    logs: Mapped[dict] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(20), default="completed")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
 class AnalysisJob(Base):
     """分析ジョブテーブル"""
 

@@ -94,6 +94,27 @@ export interface InsightCard {
   approved?: boolean;
 }
 
+/** エージェントセッション状態（タブ遷移時保持用） */
+export interface AgentSessionState {
+  agentId: string | null;
+  state: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  logs: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  insights: any[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  pendingApproval: any;
+  objective: string;
+  hitlMode: string;
+  autoReport: boolean;
+  reportFormat: string;
+  pipelineResult: { reportId?: string; downloadUrl?: string; jobCount?: number } | null;
+}
+
+/** 因果連鎖の結果（ページ遷移時保持用） */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export interface CachedAnalysisResult { data: any; hasResults: boolean }
+
 /** クラスタリングアルゴリズム */
 export type ClusterAlgorithm = "kmeans" | "hdbscan" | "gmm";
 
@@ -145,6 +166,12 @@ interface AnalysisState {
   insights: InsightCard[];
   isAgentRunning: boolean;
 
+  // エージェントセッション状態（タブ遷移時保持）
+  agentSessionState: AgentSessionState | null;
+
+  // 分析結果キャッシュ（ページ遷移時保持）
+  cachedResults: Record<string, CachedAnalysisResult>;
+
   // UI状態
   darkMode: boolean;
 
@@ -152,6 +179,7 @@ interface AnalysisState {
   setDatasets: (datasets: Dataset[]) => void;
   setActiveDataset: (id: string | null) => void;
   addDataset: (dataset: Dataset) => void;
+  removeDataset: (id: string) => void;
 
   setClusters: (clusters: Cluster[]) => void;
   setClusterPoints: (points: ClusterPoint[]) => void;
@@ -177,7 +205,16 @@ interface AnalysisState {
   approveInsight: (id: string, approved: boolean) => void;
   setAgentRunning: (running: boolean) => void;
 
+  // エージェントセッション状態
+  setAgentSessionState: (state: AgentSessionState) => void;
+  clearAgentSessionState: () => void;
+
   toggleDarkMode: () => void;
+
+  // 分析結果キャッシュ
+  setCachedResult: (key: string, result: CachedAnalysisResult) => void;
+  getCachedResult: (key: string) => CachedAnalysisResult | null;
+  clearCachedResults: () => void;
 }
 
 // ========================================
@@ -222,6 +259,12 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
   insights: [],
   isAgentRunning: false,
 
+  // 初期状態: エージェントセッション状態
+  agentSessionState: null,
+
+  // 初期状態: 分析結果キャッシュ
+  cachedResults: {},
+
   // 初期状態: UI
   darkMode: document.documentElement.classList.contains("dark"),
 
@@ -230,6 +273,11 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
   setActiveDataset: (id) => set({ activeDatasetId: id }),
   addDataset: (dataset) =>
     set((state) => ({ datasets: [...state.datasets, dataset] })),
+  removeDataset: (id) =>
+    set((state) => ({
+      datasets: state.datasets.filter((d) => d.id !== id),
+      activeDatasetId: state.activeDatasetId === id ? null : state.activeDatasetId,
+    })),
 
   // アクション: クラスタリング
   setClusters: (clusters) => set({ clusters }),
@@ -268,6 +316,21 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
       ),
     })),
   setAgentRunning: (running) => set({ isAgentRunning: running }),
+
+  // アクション: エージェントセッション状態
+  setAgentSessionState: (state) => set({ agentSessionState: state }),
+  clearAgentSessionState: () => set({ agentSessionState: null }),
+
+  // アクション: 分析結果キャッシュ
+  setCachedResult: (key, result) =>
+    set((state) => ({
+      cachedResults: { ...state.cachedResults, [key]: result },
+    })),
+  getCachedResult: (key: string): CachedAnalysisResult | null => {
+    const s = (useAnalysisStore as { getState: () => AnalysisState }).getState();
+    return s.cachedResults[key] ?? null;
+  },
+  clearCachedResults: () => set({ cachedResults: {} }),
 
   // アクション: UI
   toggleDarkMode: () =>

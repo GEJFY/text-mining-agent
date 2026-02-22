@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, Save, Clock, ChevronDown, ChevronUp } from 'lucide-react';
 import apiClient from '../api/client';
 import { agentApi, reportsApi } from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
 import DatasetGuard from '../components/DatasetGuard';
+import InfoTooltip from '../components/InfoTooltip';
 
 /* 推論フェーズの定義 */
 const PHASES = [
@@ -30,39 +32,193 @@ interface Insight {
   recommendations: string[];
 }
 
+interface SavedSession {
+  id: string;
+  dataset_id: string;
+  objective: string;
+  status: string;
+  insight_count: number;
+  created_at: string;
+}
+
 export default function AgentPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, agentSessionState, setAgentSessionState, clearAgentSessionState } = useAnalysisStore();
   const [hitlMode, setHitlMode] = useState<'full_auto' | 'semi_auto' | 'guided'>('semi_auto');
   const [objective, setObjective] = useState('');
   const [agentId, setAgentId] = useState<string | null>(null);
   const [state, setState] = useState<string>('idle');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [insights, setInsights] = useState<Insight[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const [pendingApproval, setPendingApproval] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [autoReport, setAutoReport] = useState(false);
+  const [reportFormat, setReportFormat] = useState('pdf');
   const [pipelineResult, setPipelineResult] = useState<{
     reportId?: string;
     downloadUrl?: string;
     jobCount?: number;
   } | null>(null);
 
-  const startAnalysis = async () => {
-    setLoading(true);
-    try {
-      const res = await apiClient.post('/agent/start', {
-        dataset_id: activeDatasetId,
+  // セッション保存関連
+  const [saving, setSaving] = useState(false);
+  const [savedMessage, setSavedMessage] = useState('');
+  const [savedSessions, setSavedSessions] = useState<SavedSession[]>([]);
+  const [showSessions, setShowSessions] = useState(false);
+
+  // ポーリング用ref
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const logsEndRef = useRef<HTMLDivElement>(null);
+
+  // Zustandからセッション状態を復元
+  useEffect(() => {
+    if (agentSessionState) {
+      setAgentId(agentSessionState.agentId);
+      setState(agentSessionState.state);
+      setLogs(agentSessionState.logs || []);
+      setInsights(agentSessionState.insights || []);
+      setPendingApproval(agentSessionState.pendingApproval);
+      setObjective(agentSessionState.objective || '');
+      setHitlMode((agentSessionState.hitlMode as 'full_auto' | 'semi_auto' | 'guided') || 'semi_auto');
+      setAutoReport(agentSessionState.autoReport || false);
+      setReportFormat(agentSessionState.reportFormat || 'pdf');
+      setPipelineResult(agentSessionState.pipelineResult || null);
+      // running状態ならポーリング再開
+      if (agentSessionState.agentId && !['completed', 'error', 'idle'].includes(agentSessionState.state)) {
+        startPolling(agentSessionState.agentId);
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // 状態変更時にZustandに自動保存
+  useEffect(() => {
+    if (agentId) {
+      setAgentSessionState({
+        agentId,
+        state,
+        logs,
+        insights,
+        pendingApproval,
         objective,
-        hitl_mode: hitlMode,
+        hitlMode,
+        autoReport,
+        reportFormat,
+        pipelineResult,
       });
-      setAgentId(res.data.agent_id);
-      setState(res.data.state);
-      setLogs(res.data.logs || []);
-      setInsights(res.data.insights || []);
-      setPendingApproval(res.data.pending_approval);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+    }
+  }, [agentId, state, logs, insights, pendingApproval, objective, hitlMode, autoReport, reportFormat, pipelineResult, setAgentSessionState]);
+
+  // 過去のセッション一覧を取得
+  const loadSavedSessions = useCallback(async () => {
+    if (!activeDatasetId) return;
+    try {
+      const res = await agentApi.listSessions(activeDatasetId);
+      setSavedSessions(res.data.sessions || []);
+    } catch {
+      // 取得失敗は無視
+    }
+  }, [activeDatasetId]);
+
+  useEffect(() => {
+    loadSavedSessions();
+  }, [loadSavedSessions]);
+
+  // ログ末尾への自動スクロール
+  useEffect(() => {
+    logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [logs]);
+
+  // クリーンアップ
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current);
+    };
+  }, []);
+
+  // ポーリング開始
+  const startPolling = useCallback((id: string) => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+    pollingRef.current = setInterval(async () => {
+      try {
+        const res = await agentApi.logs(id);
+        const data = res.data;
+        setLogs(data.logs || []);
+        setState(data.state || 'unknown');
+        if (data.insights?.length) setInsights(data.insights);
+        if (data.pending_approval) setPendingApproval(data.pending_approval);
+        // 完了またはエラーで停止
+        if (['completed', 'error'].includes(data.state)) {
+          stopPolling();
+        }
+      } catch {
+        // ポーリングエラーは無視
+      }
+    }, 3000);
+  }, []);
+
+  const stopPolling = () => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = null;
+    }
+  };
+
+  const startAnalysis = async () => {
+    if (!activeDatasetId) return;
+    clearAgentSessionState();
+    setLoading(true);
+    setLogs([]);
+    setInsights([]);
+    setPendingApproval(null);
+    setPipelineResult(null);
+    setSavedMessage('');
+
+    if (autoReport) {
+      // パイプラインモード
+      try {
+        setState('running');
+        const res = await agentApi.pipeline({
+          dataset_id: activeDatasetId,
+          objective,
+          output_format: reportFormat,
+        });
+        setAgentId(res.data.agent_id);
+        setInsights(res.data.insights || []);
+        setLogs(res.data.logs || []);
+        setState('completed');
+        setPipelineResult({
+          reportId: res.data.report_id,
+          downloadUrl: res.data.report_download_url,
+          jobCount: res.data.analysis_jobs?.length ?? 0,
+        });
+      } catch (e) {
+        console.error(e);
+        setState('error');
+      } finally {
+        setLoading(false);
+      }
+    } else {
+      // 通常分析モード（ポーリングで進捗取得）
+      try {
+        setState('running');
+        const res = await apiClient.post('/agent/start', {
+          dataset_id: activeDatasetId,
+          objective,
+          hitl_mode: hitlMode,
+        });
+        const aid = res.data.agent_id;
+        setAgentId(aid);
+        setState(res.data.state);
+        setLogs(res.data.logs || []);
+        setInsights(res.data.insights || []);
+        setPendingApproval(res.data.pending_approval);
+      } catch (e) {
+        console.error(e);
+        setState('error');
+      } finally {
+        setLoading(false);
+      }
     }
   };
 
@@ -84,27 +240,34 @@ export default function AgentPage() {
     }
   };
 
-  const runPipeline = async () => {
-    setLoading(true);
-    setPipelineResult(null);
+  const saveSession = async () => {
+    if (!agentId) return;
+    setSaving(true);
     try {
-      const res = await agentApi.pipeline({
-        dataset_id: activeDatasetId!,
-        objective,
-      });
-      setAgentId(res.data.agent_id);
-      setInsights(res.data.insights || []);
-      setLogs([]);
-      setState('completed');
-      setPipelineResult({
-        reportId: res.data.report_id,
-        downloadUrl: res.data.report_download_url,
-        jobCount: res.data.analysis_jobs?.length ?? 0,
-      });
-    } catch (e) {
-      console.error(e);
+      await agentApi.saveSession(agentId);
+      setSavedMessage('分析結果を保存しました');
+      loadSavedSessions();
+    } catch {
+      setSavedMessage('保存に失敗しました');
     } finally {
-      setLoading(false);
+      setSaving(false);
+    }
+  };
+
+  const restoreSession = async (sessionId: string) => {
+    try {
+      const res = await agentApi.getSession(sessionId);
+      const data = res.data;
+      setAgentId(data.id);
+      setState(data.status || 'completed');
+      setLogs(data.logs || []);
+      setInsights(data.insights || []);
+      setObjective(data.objective || '');
+      setPendingApproval(null);
+      setPipelineResult(null);
+      setSavedMessage('');
+    } catch {
+      // 復元失敗
     }
   };
 
@@ -115,7 +278,7 @@ export default function AgentPage() {
       const url = window.URL.createObjectURL(new Blob([res.data]));
       const a = document.createElement('a');
       a.href = url;
-      a.download = `nexustext_report.pdf`;
+      a.download = `nexustext_report.${reportFormat}`;
       a.click();
       window.URL.revokeObjectURL(url);
     } catch (e) {
@@ -140,6 +303,8 @@ export default function AgentPage() {
     return 'text-red-600 dark:text-red-400';
   };
 
+  const isRunning = state === 'running' || (loading && state !== 'completed' && state !== 'error');
+
   return (
     <DatasetGuard>
     <div className="space-y-6">
@@ -152,6 +317,7 @@ export default function AgentPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               分析目的
+              <InfoTooltip title="分析目的" text="エージェントに与える分析のゴールです。具体的に記述するほど、エージェントは適切なツールを選択し、焦点を絞った分析を行います。例:「顧客離反の主要因を特定し、改善策を提案する」「製品Aに関するネガティブフィードバックのパターンを分析する」" />
             </label>
             <input
               type="text"
@@ -164,10 +330,11 @@ export default function AgentPage() {
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
               HITL制御モード
+              <InfoTooltip title="Human-in-the-Loop制御" text="エージェントの自律度を制御します。Full Auto: 全フェーズを自動実行。最速ですが中間確認なし。Semi-Auto: 仮説生成後に承認を求めます。重要な判断ポイントで人間が介入でき、バランスが良い推奨設定です。Guided: 各ステップで承認が必要。最も慎重ですが処理に時間がかかります。" />
             </label>
             <select
               value={hitlMode}
-              onChange={(e) => setHitlMode(e.target.value as any)}
+              onChange={(e) => setHitlMode(e.target.value as 'full_auto' | 'semi_auto' | 'guided')}
               className="w-full rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white shadow-sm p-2 border"
             >
               <option value="full_auto">Full Auto - 全自動</option>
@@ -176,20 +343,52 @@ export default function AgentPage() {
             </select>
           </div>
         </div>
-        <div className="flex gap-3 mt-4">
+
+        {/* レポート自動生成オプション */}
+        <div className="mt-4 p-3 bg-gray-50 dark:bg-gray-700/50 rounded-lg">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={autoReport}
+              onChange={(e) => setAutoReport(e.target.checked)}
+              className="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+            />
+            <span className="text-sm text-gray-700 dark:text-gray-300">
+              分析完了後にレポートを自動生成する
+            </span>
+            <InfoTooltip title="自動レポート" text="チェックすると、AI分析が完了した後に自動的にレポートを生成します。分析→レポート生成が一括で実行されるパイプラインモードで動作します。" />
+          </label>
+          {autoReport && (
+            <div className="mt-2 ml-6">
+              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">出力形式</label>
+              <select
+                value={reportFormat}
+                onChange={(e) => setReportFormat(e.target.value)}
+                className="rounded border-gray-300 dark:border-gray-600 dark:bg-gray-700 dark:text-white text-sm p-1.5 border"
+              >
+                <option value="pdf">PDF</option>
+                <option value="pptx">PowerPoint</option>
+                <option value="docx">Word</option>
+                <option value="excel">Excel</option>
+              </select>
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4">
           <button
             onClick={startAnalysis}
-            disabled={loading || !activeDatasetId}
-            className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors"
+            disabled={isRunning || !activeDatasetId}
+            className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg disabled:opacity-50 transition-colors flex items-center gap-2"
           >
-            {loading ? '分析中...' : '分析開始'}
-          </button>
-          <button
-            onClick={runPipeline}
-            disabled={loading || !activeDatasetId}
-            className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg disabled:opacity-50 transition-colors"
-          >
-            {loading ? '実行中...' : '自動パイプライン（分析→レポート）'}
+            {isRunning ? (
+              <>
+                <Loader2 size={16} className="animate-spin" />
+                分析中...
+              </>
+            ) : (
+              'AI分析を開始'
+            )}
           </button>
         </div>
       </div>
@@ -205,15 +404,21 @@ export default function AgentPage() {
               <div key={phase.key} className="flex items-center">
                 <div className="text-center">
                   <div
-                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold mx-auto ${
-                      isCurrent
+                    className={`w-10 h-10 rounded-full flex items-center justify-center text-white text-sm font-bold mx-auto transition-all ${
+                      isCurrent && isRunning
+                        ? `${getPhaseColor(phase.key)} ring-4 ring-indigo-300 animate-pulse`
+                        : isCurrent
                         ? `${getPhaseColor(phase.key)} ring-4 ring-indigo-300`
                         : isActive
                         ? getPhaseColor(phase.key)
                         : 'bg-gray-300 dark:bg-gray-600'
                     }`}
                   >
-                    {phase.icon}
+                    {isCurrent && isRunning ? (
+                      <Loader2 size={16} className="animate-spin" />
+                    ) : (
+                      phase.icon
+                    )}
                   </div>
                   <p className="text-xs mt-1 font-medium text-gray-700 dark:text-gray-300">
                     {phase.label}
@@ -221,7 +426,9 @@ export default function AgentPage() {
                   <p className="text-xs text-gray-500 dark:text-gray-400">{phase.description}</p>
                 </div>
                 {idx < PHASES.length - 1 && (
-                  <div className="w-12 h-0.5 bg-gray-300 dark:bg-gray-600 mx-2" />
+                  <div className={`w-12 h-0.5 mx-2 transition-colors ${
+                    isActive ? 'bg-indigo-400' : 'bg-gray-300 dark:bg-gray-600'
+                  }`} />
                 )}
               </div>
             );
@@ -260,7 +467,7 @@ export default function AgentPage() {
         </div>
       )}
 
-      {/* パイプライン結果 */}
+      {/* パイプライン結果 + 保存ボタン */}
       {pipelineResult && (
         <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-300 dark:border-emerald-700 rounded-lg p-6">
           <h3 className="text-lg font-semibold text-emerald-800 dark:text-emerald-200 mb-2">
@@ -269,13 +476,32 @@ export default function AgentPage() {
           <p className="text-emerald-700 dark:text-emerald-300 text-sm mb-3">
             {pipelineResult.jobCount}件の分析ジョブが実行されました。
           </p>
-          {pipelineResult.downloadUrl && (
-            <button
-              onClick={downloadReport}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
-            >
-              レポートをダウンロード
-            </button>
+          <div className="flex gap-3">
+            {pipelineResult.downloadUrl && (
+              <button
+                onClick={downloadReport}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors"
+              >
+                レポートをダウンロード
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 分析完了時の保存ボタン */}
+      {state === 'completed' && agentId && (
+        <div className="flex items-center gap-3">
+          <button
+            onClick={saveSession}
+            disabled={saving}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors flex items-center gap-2 disabled:opacity-50"
+          >
+            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+            分析結果を保存
+          </button>
+          {savedMessage && (
+            <span className="text-sm text-green-600 dark:text-green-400">{savedMessage}</span>
           )}
         </div>
       )}
@@ -283,8 +509,9 @@ export default function AgentPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* エージェントログ */}
         <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2">
             エージェント・ログ
+            {isRunning && <Loader2 size={14} className="animate-spin text-indigo-500" />}
           </h2>
           <div className="space-y-3 max-h-96 overflow-y-auto">
             {logs.length === 0 && (
@@ -312,6 +539,7 @@ export default function AgentPage() {
                 )}
               </div>
             ))}
+            <div ref={logsEndRef} />
           </div>
         </div>
 
@@ -373,6 +601,47 @@ export default function AgentPage() {
           </div>
         </div>
       </div>
+
+      {/* 過去の分析セッション */}
+      {savedSessions.length > 0 && (
+        <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-6">
+          <button
+            onClick={() => setShowSessions(!showSessions)}
+            className="flex items-center gap-2 w-full text-left"
+          >
+            <Clock size={16} className="text-gray-500" />
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+              過去の分析セッション ({savedSessions.length})
+            </h2>
+            {showSessions ? <ChevronUp size={16} className="ml-auto text-gray-400" /> : <ChevronDown size={16} className="ml-auto text-gray-400" />}
+          </button>
+          {showSessions && (
+            <div className="mt-4 space-y-2">
+              {savedSessions.map((session) => (
+                <div
+                  key={session.id}
+                  className="flex items-center justify-between p-3 rounded-lg bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">
+                      {session.objective || '（目的未設定）'}
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      {session.created_at ? new Date(session.created_at).toLocaleString('ja-JP') : ''} ・ インサイト{session.insight_count}件
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => restoreSession(session.id)}
+                    className="ml-3 px-3 py-1 text-xs bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors"
+                  >
+                    復元
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
     </div>
     </DatasetGuard>
   );

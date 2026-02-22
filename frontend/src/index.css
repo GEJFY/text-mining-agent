@@ -2,6 +2,36 @@
 @tailwind components;
 @tailwind utilities;
 
+/* PwCブランドカラー（デフォルトパレット） */
+:root {
+  --color-nexus-50: #fff7ed;
+  --color-nexus-100: #ffedd5;
+  --color-nexus-200: #fed7aa;
+  --color-nexus-300: #fdba74;
+  --color-nexus-400: #fb923c;
+  --color-nexus-500: #D04A02;
+  --color-nexus-600: #B53D02;
+  --color-nexus-700: #9A3412;
+  --color-nexus-800: #7C2D12;
+  --color-nexus-900: #6C2710;
+  --color-nexus-950: #431407;
+}
+
+/* Indigoパレット */
+:root[data-palette="indigo"] {
+  --color-nexus-50: #eef2ff;
+  --color-nexus-100: #e0e7ff;
+  --color-nexus-200: #c7d2fe;
+  --color-nexus-300: #a5b4fc;
+  --color-nexus-400: #818cf8;
+  --color-nexus-500: #6366f1;
+  --color-nexus-600: #4f46e5;
+  --color-nexus-700: #4338ca;
+  --color-nexus-800: #3730a3;
+  --color-nexus-900: #312e81;
+  --color-nexus-950: #1e1b4b;
+}
+
 /* グローバルスタイル */
 @layer base {
   html {

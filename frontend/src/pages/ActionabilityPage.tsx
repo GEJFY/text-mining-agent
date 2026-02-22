@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   RadarChart,
   Radar,
@@ -18,6 +18,10 @@ import { Play, Loader2, AlertCircle, Target } from "lucide-react";
 import { useAnalysisStore } from "../stores/analysisStore";
 import { actionabilityApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * アクショナビリティスコアリングページ
@@ -52,7 +56,7 @@ const CATEGORY_LABELS: Record<string, string> = {
 const CATEGORY_ORDER = ["immediate", "short_term", "long_term", "informational"];
 
 function ActionabilityPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -63,6 +67,16 @@ function ActionabilityPage() {
   // 結果
   const [items, setItems] = useState<ActionabilityItem[]>([]);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("actionability");
+    if (cached?.hasResults) {
+      setItems(cached.data.items ?? []);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   const handleRun = async () => {
     if (!activeDatasetId) return;
@@ -72,6 +86,7 @@ function ActionabilityPage() {
     try {
       const response = await actionabilityApi.run(activeDatasetId, {
         context: context || undefined,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -100,6 +115,7 @@ function ActionabilityPage() {
       setItems(mapped);
       setHasResults(true);
       setActiveCategory(null);
+      setCachedResult("actionability", { data: { items: mapped }, hasResults: true });
     } catch (err) {
       const message =
         err instanceof Error
@@ -199,8 +215,9 @@ function ActionabilityPage() {
 
               {/* ビジネスコンテキスト */}
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                   ビジネスコンテキスト（任意）
+                  <InfoTooltip title="ビジネスコンテキスト" text="分析対象の業界や目的を記述すると、LLMがその文脈に基づいて具体性・緊急度・実現可能性・インパクトの5次元をより適切に評価します。例：「SaaS企業の顧客フィードバック」「製造業の品質クレーム」など。空欄でも一般的な基準で評価しますが、コンテキストを指定するとより実用的な結果が得られます。" />
                 </label>
                 <textarea
                   value={context}
@@ -229,6 +246,12 @@ function ActionabilityPage() {
                 )}
               </button>
             </div>
+
+            {/* 進捗タイムライン */}
+            <AnalysisProgress steps={ANALYSIS_STEPS.actionability} isRunning={isRunning} />
+
+            {/* 属性フィルタ */}
+            <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
             {/* カテゴリフィルタ */}
             {hasResults && (

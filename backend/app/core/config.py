@@ -29,6 +29,7 @@ class LLMDeploymentMode(str, Enum):
     AWS_BEDROCK = "aws_bedrock"  # AWS Bedrock経由
     AZURE_AI_FOUNDRY = "azure_ai_foundry"  # Azure AI Foundry経由
     GCP_VERTEX_AI = "gcp_vertex_ai"  # GCP Vertex AI経由
+    GEMINI_DIRECT = "gemini_direct"  # Google Gemini Direct API（APIキー認証）
     LOCAL = "local"  # Ollama/vLLM
 
 
@@ -63,6 +64,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     openai_api_key: str = ""
     google_cloud_project: str = ""
+    gemini_api_key: str = ""
 
     # LLMモデル設定
     primary_model: str = "claude-opus-4-6"

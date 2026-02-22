@@ -48,6 +48,7 @@ LABEL description="NexusText AI Backend - FastAPI Application"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
+    fonts-ipaexfont \
     && rm -rf /var/lib/apt/lists/*
 
 # 非rootユーザーの作成
@@ -72,7 +73,9 @@ USER nexustext
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONPATH=/app \
-    PORT=8000
+    PORT=8000 \
+    NUMBA_NUM_THREADS=1 \
+    NUMBA_CACHE_DIR=/tmp/numba_cache
 
 # ヘルスチェック
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
@@ -80,10 +83,11 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 
 EXPOSE ${PORT}
 
-# uvicornでアプリケーション起動
+# uvicornでアプリケーション起動（workers=1: numba/UMAP fork安全性のため）
 CMD ["uvicorn", "app.main:app", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
-     "--workers", "2", \
+     "--workers", "1", \
+     "--timeout-keep-alive", "120", \
      "--access-log", \
      "--log-level", "info"]

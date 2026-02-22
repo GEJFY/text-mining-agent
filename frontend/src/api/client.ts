@@ -152,16 +152,27 @@ export const datasetsApi = {
   list: () => apiClient.get("/data/datasets"),
 
   /** データセットをアップロード */
-  upload: (file: File, config?: { textColumn?: string }) => {
+  upload: (file: File, config?: { textColumn?: string; columnMappings?: Array<{ column_name: string; role: string }> }) => {
     const formData = new FormData();
     formData.append("file", file);
     if (config?.textColumn) {
       formData.append("text_column", config.textColumn);
     }
+    if (config?.columnMappings) {
+      formData.append("column_mappings", JSON.stringify(config.columnMappings));
+    }
     return apiClient.post("/data/import", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     });
   },
+
+  /** データセットの属性メタデータを取得 */
+  getAttributes: (datasetId: string) =>
+    apiClient.get(`/data/datasets/${datasetId}/attributes`),
+
+  /** データセットを削除 */
+  delete: (datasetId: string) =>
+    apiClient.delete(`/data/datasets/${datasetId}`),
 };
 
 /** クラスタリング関連API */
@@ -172,6 +183,7 @@ export const clusterApi = {
     n_clusters?: number;
     min_cluster_size?: number;
     epsilon?: number;
+    filters?: Record<string, unknown>;
   }) => apiClient.post("/analysis/cluster", {
     dataset_id: datasetId,
     ...params,
@@ -190,6 +202,7 @@ export const sentimentApi = {
   run: (datasetId: string, params?: {
     mode?: string;
     custom_axes?: Array<{ name: string; description: string }>;
+    filters?: Record<string, unknown>;
   }) => apiClient.post("/analysis/sentiment", {
     dataset_id: datasetId,
     ...params,
@@ -208,6 +221,7 @@ export const cooccurrenceApi = {
   run: (datasetId: string, params?: {
     min_frequency?: number;
     window_size?: number;
+    filters?: Record<string, unknown>;
   }) => apiClient.post("/analysis/cooccurrence", {
     dataset_id: datasetId,
     ...params,
@@ -223,6 +237,13 @@ export const cooccurrenceApi = {
     time_slice: true,
     ...params,
   }),
+
+  /** LLMによるコミュニティ命名 */
+  nameCommunities: (datasetId: string, communities: Record<string, string[]>) =>
+    apiClient.post("/analysis/cooccurrence/name-communities", {
+      dataset_id: datasetId,
+      communities,
+    }),
 };
 
 /** AIエージェント関連API */
@@ -251,6 +272,20 @@ export const agentApi = {
     template?: string;
     output_format?: string;
   }) => apiClient.post("/agent/pipeline", params),
+
+  /** 分析セッションをDB保存 */
+  saveSession: (agentId: string) =>
+    apiClient.post(`/agent/${agentId}/save`),
+
+  /** 保存済みセッション一覧 */
+  listSessions: (datasetId?: string) =>
+    apiClient.get("/agent/sessions/list", {
+      params: datasetId ? { dataset_id: datasetId } : undefined,
+    }),
+
+  /** 保存済みセッション詳細 */
+  getSession: (sessionId: string) =>
+    apiClient.get(`/agent/sessions/${sessionId}`),
 };
 
 /** レポート関連API */
@@ -302,25 +337,25 @@ export const dashboardApi = {
 
 /** 因果連鎖分析API */
 export const causalChainApi = {
-  run: (datasetId: string, params?: { max_chains?: number; focus_topic?: string }) =>
+  run: (datasetId: string, params?: { max_chains?: number; focus_topic?: string; filters?: Record<string, unknown> }) =>
     apiClient.post("/analysis/causal-chain", { dataset_id: datasetId, ...params }),
 };
 
 /** 矛盾検出API */
 export const contradictionApi = {
-  run: (datasetId: string, params?: { sensitivity?: string }) =>
+  run: (datasetId: string, params?: { sensitivity?: string; filters?: Record<string, unknown> }) =>
     apiClient.post("/analysis/contradiction", { dataset_id: datasetId, ...params }),
 };
 
 /** アクショナビリティスコアリングAPI */
 export const actionabilityApi = {
-  run: (datasetId: string, params?: { context?: string }) =>
+  run: (datasetId: string, params?: { context?: string; filters?: Record<string, unknown> }) =>
     apiClient.post("/analysis/actionability", { dataset_id: datasetId, ...params }),
 };
 
 /** タクソノミー生成API */
 export const taxonomyApi = {
-  run: (datasetId: string, params?: { max_depth?: number; max_categories?: number }) =>
+  run: (datasetId: string, params?: { max_depth?: number; max_categories?: number; filters?: Record<string, unknown> }) =>
     apiClient.post("/analysis/taxonomy", { dataset_id: datasetId, ...params }),
 };
 
@@ -331,6 +366,40 @@ export const similarityApi = {
     apiClient.post("/analysis/similarity/search", null, {
       params: { dataset_id: datasetId, query, top_k: topK ?? 10 },
     }),
+};
+
+/** ストップワード管理API */
+export const stopwordsApi = {
+  /** 現在のストップワード一覧を取得 */
+  get: () => apiClient.get("/analysis/stopwords"),
+
+  /** ストップワードを更新 */
+  update: (category: string, words: string[], mode: string = "add") =>
+    apiClient.put("/analysis/stopwords", { category, words, mode }),
+
+  /** デフォルトにリセット */
+  reset: (category: string = "all") =>
+    apiClient.post("/analysis/stopwords/reset", null, {
+      params: { category },
+    }),
+};
+
+/** 管理者API */
+export const adminApi = {
+  /** ユーザー一覧 */
+  listUsers: () => apiClient.get("/auth/users"),
+
+  /** ロール変更 */
+  updateRole: (userId: string, role: string) =>
+    apiClient.put(`/auth/users/${userId}/role`, { role }),
+
+  /** 有効/無効切替 */
+  toggleActive: (userId: string) =>
+    apiClient.put(`/auth/users/${userId}/active`),
+
+  /** パスワードリセット */
+  resetPassword: (userId: string, newPassword: string) =>
+    apiClient.post(`/auth/users/${userId}/reset-password`, { new_password: newPassword }),
 };
 
 export default apiClient;

@@ -14,13 +14,19 @@ from app.core.database import get_db
 from app.core.security import TokenData, get_current_user
 from app.models.orm import AnalysisJob
 from app.models.schemas import (
+    ActionabilityRequest,
+    CausalChainRequest,
     ClusterRequest,
     ClusterResult,
+    CommunityNamingRequest,
+    ContradictionRequest,
     CooccurrenceRequest,
     CooccurrenceResult,
     SentimentEstimate,
     SentimentRequest,
     SentimentResult,
+    StopwordUpdateRequest,
+    TaxonomyRequest,
 )
 from app.services.cache import analysis_cache
 from app.services.clustering import ClusteringService
@@ -32,9 +38,13 @@ from app.services.sentiment import SentimentService
 router = APIRouter()
 
 
-async def _fetch_texts(dataset_id: str, db: AsyncSession) -> tuple[list[str], list[str], list[str | None]]:
-    """データセットからテキストを取得（共通ヘルパー）"""
-    texts, record_ids, dates = await get_texts_by_dataset(dataset_id, db)
+async def _fetch_texts(
+    dataset_id: str,
+    db: AsyncSession,
+    filters: dict | None = None,
+) -> tuple[list[str], list[str], list[str | None]]:
+    """データセットからテキストを取得（共通ヘルパー、フィルタ対応）"""
+    texts, record_ids, dates = await get_texts_by_dataset(dataset_id, db, filters=filters)
     if not texts:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found or empty")
     return texts, record_ids, dates
@@ -74,7 +84,7 @@ async def run_clustering(
     cached = await analysis_cache.get(request.dataset_id, "cluster", params)
     if cached:
         return ClusterResult(**cached)
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = ClusteringService(llm_orchestrator)
     result = await service.analyze(request, texts)
     await _save_analysis_job(db, request.dataset_id, "cluster", params, result.model_dump())
@@ -103,7 +113,7 @@ async def estimate_sentiment(
     _current_user: TokenData = Depends(get_current_user),
 ) -> SentimentEstimate:
     """感情分析のコスト見積り"""
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = SentimentService(llm_orchestrator)
     return service.estimate_cost(texts, request)
 
@@ -119,9 +129,9 @@ async def run_sentiment(
     cached = await analysis_cache.get(request.dataset_id, "sentiment", params)
     if cached:
         return SentimentResult(**cached)
-    texts, record_ids, _ = await _fetch_texts(request.dataset_id, db)
+    texts, record_ids, dates = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = SentimentService(llm_orchestrator)
-    result = await service.analyze(request, texts, record_ids)
+    result = await service.analyze(request, texts, record_ids, dates=dates)
     await _save_analysis_job(db, request.dataset_id, "sentiment", params, result.model_dump())
     await analysis_cache.set(request.dataset_id, "sentiment", params, result.model_dump(), ttl=3600)
     return result
@@ -138,7 +148,7 @@ async def run_cooccurrence(
     cached = await analysis_cache.get(request.dataset_id, "cooccurrence", params)
     if cached:
         return CooccurrenceResult(**cached)
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     result = cooccurrence_service.analyze(texts, request)
     await _save_analysis_job(db, request.dataset_id, "cooccurrence", params, result.model_dump())
     await analysis_cache.set(request.dataset_id, "cooccurrence", params, result.model_dump(), ttl=3600)
@@ -152,8 +162,33 @@ async def run_cooccurrence_timeslice(
     _current_user: TokenData = Depends(get_current_user),
 ) -> list[dict]:
     """時間スライス共起ネットワーク分析"""
-    texts, _, dates = await _fetch_texts(request.dataset_id, db)
+    texts, _, dates = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     return cooccurrence_service.time_sliced_analysis(texts, dates, request)
+
+
+@router.post("/cooccurrence/name-communities")
+async def name_communities(
+    request: CommunityNamingRequest,
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """LLMでコミュニティにテーマ名を付与"""
+    from app.services.llm_providers.base import LLMRequest
+
+    names: dict[str, str] = {}
+    for cid, words in request.communities.items():
+        top_words = words[:15]
+        prompt = (
+            f"以下の単語グループに、10文字以内の日本語テーマ名を1つだけ付けてください。\n"
+            f"単語リスト: {', '.join(top_words)}\n"
+            f"テーマ名のみを出力してください。説明不要。"
+        )
+        try:
+            resp = await llm_orchestrator.invoke(LLMRequest(prompt=prompt, max_tokens=30, temperature=0.3))
+            name = resp.content.strip().strip("「」\"'").strip()[:15]
+            names[cid] = name if name else f"コミュニティ {int(cid) + 1}"
+        except Exception:
+            names[cid] = f"コミュニティ {int(cid) + 1}"
+    return {"names": names}
 
 
 @router.post("/similarity/search")
@@ -201,15 +236,13 @@ async def search_similar(
 
 @router.post("/causal-chain")
 async def run_causal_chain(
-    dataset_id: str,
-    max_chains: int = 10,
-    focus_topic: str = "",
+    request: CausalChainRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """因果チェーン抽出"""
-    params = {"max_chains": max_chains, "focus_topic": focus_topic}
-    cached = await analysis_cache.get(dataset_id, "causal_chain", params)
+    params = {"max_chains": request.max_chains, "focus_topic": request.focus_topic}
+    cached = await analysis_cache.get(request.dataset_id, "causal_chain", params)
     if cached:
         return cached
 
@@ -217,34 +250,33 @@ async def run_causal_chain(
 
     result = await analysis_registry.execute(
         "causal_chain_analysis",
-        dataset_id,
+        request.dataset_id,
         db,
-        max_chains=max_chains,
-        focus_topic=focus_topic,
+        max_chains=request.max_chains,
+        focus_topic=request.focus_topic,
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "causal_chain", params, result.data)
-        await analysis_cache.set(dataset_id, "causal_chain", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "causal_chain", params, result.data)
+        await analysis_cache.set(request.dataset_id, "causal_chain", params, response, ttl=1800)
     return response
 
 
 @router.post("/contradiction")
 async def run_contradiction(
-    dataset_id: str,
-    sensitivity: str = "medium",
+    request: ContradictionRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """矛盾検出"""
-    params = {"sensitivity": sensitivity}
-    cached = await analysis_cache.get(dataset_id, "contradiction", params)
+    params = {"sensitivity": request.sensitivity}
+    cached = await analysis_cache.get(request.dataset_id, "contradiction", params)
     if cached:
         return cached
 
@@ -252,34 +284,32 @@ async def run_contradiction(
 
     result = await analysis_registry.execute(
         "contradiction_detection",
-        dataset_id,
+        request.dataset_id,
         db,
-        sensitivity=sensitivity,
+        sensitivity=request.sensitivity,
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "contradiction", params, result.data)
-        await analysis_cache.set(dataset_id, "contradiction", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "contradiction", params, result.data)
+        await analysis_cache.set(request.dataset_id, "contradiction", params, response, ttl=1800)
     return response
 
 
 @router.post("/actionability")
 async def run_actionability(
-    dataset_id: str,
-    context: str = "",
-    max_items: int = 100,
+    request: ActionabilityRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """アクショナビリティスコアリング"""
-    params = {"context": context, "max_items": max_items}
-    cached = await analysis_cache.get(dataset_id, "actionability", params)
+    params = {"context": request.context, "max_items": request.max_items}
+    cached = await analysis_cache.get(request.dataset_id, "actionability", params)
     if cached:
         return cached
 
@@ -287,35 +317,33 @@ async def run_actionability(
 
     result = await analysis_registry.execute(
         "actionability_scoring",
-        dataset_id,
+        request.dataset_id,
         db,
-        context=context,
-        max_items=max_items,
+        context=request.context,
+        max_items=request.max_items,
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "actionability", params, result.data)
-        await analysis_cache.set(dataset_id, "actionability", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "actionability", params, result.data)
+        await analysis_cache.set(request.dataset_id, "actionability", params, response, ttl=1800)
     return response
 
 
 @router.post("/taxonomy")
 async def run_taxonomy(
-    dataset_id: str,
-    max_depth: int = 3,
-    max_categories: int = 8,
+    request: TaxonomyRequest,
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """タクソノミー自動生成"""
-    params = {"max_depth": max_depth, "max_categories": max_categories}
-    cached = await analysis_cache.get(dataset_id, "taxonomy", params)
+    params = {"max_depth": request.max_depth, "max_categories": request.max_categories}
+    cached = await analysis_cache.get(request.dataset_id, "taxonomy", params)
     if cached:
         return cached
 
@@ -323,19 +351,66 @@ async def run_taxonomy(
 
     result = await analysis_registry.execute(
         "taxonomy_generation",
-        dataset_id,
+        request.dataset_id,
         db,
-        max_depth=max_depth,
-        max_categories=max_categories,
+        max_depth=request.max_depth,
+        max_categories=request.max_categories,
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
     }
     if result.success:
-        await _save_analysis_job(db, dataset_id, "taxonomy", params, result.data)
-        await analysis_cache.set(dataset_id, "taxonomy", params, response, ttl=1800)
+        await _save_analysis_job(db, request.dataset_id, "taxonomy", params, result.data)
+        await analysis_cache.set(request.dataset_id, "taxonomy", params, response, ttl=1800)
     return response
+
+
+# === ストップワード管理 ===
+
+
+@router.get("/stopwords")
+async def get_stopwords(
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """現在のストップワード一覧を取得"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    return text_preprocessor.get_stopwords()
+
+
+@router.put("/stopwords")
+async def update_stopwords(
+    request: StopwordUpdateRequest,
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """ストップワードを更新"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    if request.category not in ("ja", "en", "custom"):
+        raise HTTPException(status_code=400, detail="category must be 'ja', 'en', or 'custom'")
+    if request.mode not in ("replace", "add", "remove"):
+        raise HTTPException(status_code=400, detail="mode must be 'replace', 'add', or 'remove'")
+
+    return text_preprocessor.update_stopwords(request.category, request.words, request.mode)
+
+
+@router.post("/stopwords/reset")
+async def reset_stopwords(
+    category: str = "all",
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """ストップワードをデフォルトにリセット"""
+    from app.services.text_preprocessing import text_preprocessor
+
+    if category == "all":
+        text_preprocessor.reset_stopwords("ja")
+        text_preprocessor.reset_stopwords("en")
+        text_preprocessor.reset_stopwords("custom")
+        return text_preprocessor.get_stopwords()
+    if category not in ("ja", "en", "custom"):
+        raise HTTPException(status_code=400, detail="category must be 'ja', 'en', 'custom', or 'all'")
+    return text_preprocessor.reset_stopwords(category)

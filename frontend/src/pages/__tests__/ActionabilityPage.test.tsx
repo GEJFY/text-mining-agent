@@ -8,6 +8,9 @@ vi.mock("../../api/client", () => ({
   actionabilityApi: {
     run: vi.fn(),
   },
+  datasetsApi: {
+    getAttributes: vi.fn().mockResolvedValue({ data: { attributes: [] } }),
+  },
 }));
 
 import { actionabilityApi } from "../../api/client";

@@ -26,6 +26,10 @@ def get_llm_provider() -> BaseLLMProvider:
         from app.services.llm_providers.vertex_provider import GCPVertexAIProvider
 
         return GCPVertexAIProvider()
+    elif mode == "gemini_direct":
+        from app.services.llm_providers.gemini_provider import GeminiDirectProvider
+
+        return GeminiDirectProvider()
     elif mode == "local":
         from app.services.llm_providers.local_provider import LocalLLMProvider
 

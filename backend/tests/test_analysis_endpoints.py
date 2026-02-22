@@ -45,7 +45,7 @@ async def test_causal_chain_endpoint(client):
 
         resp = await client.post(
             "/api/v1/analysis/causal-chain",
-            params={
+            json={
                 "dataset_id": "ds-001",
                 "max_chains": 5,
             },
@@ -54,7 +54,7 @@ async def test_causal_chain_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "chains" in body
     assert "summary" in body
 
 
@@ -82,7 +82,7 @@ async def test_contradiction_endpoint(client):
 
         resp = await client.post(
             "/api/v1/analysis/contradiction",
-            params={
+            json={
                 "dataset_id": "ds-001",
                 "sensitivity": "medium",
             },
@@ -91,7 +91,7 @@ async def test_contradiction_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "contradictions" in body
 
 
 @pytest.mark.asyncio
@@ -117,7 +117,7 @@ async def test_actionability_endpoint(client):
 
         resp = await client.post(
             "/api/v1/analysis/actionability",
-            params={
+            json={
                 "dataset_id": "ds-001",
                 "context": "テスト",
             },
@@ -126,7 +126,7 @@ async def test_actionability_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "items" in body
 
 
 @pytest.mark.asyncio
@@ -151,7 +151,7 @@ async def test_taxonomy_endpoint(client):
 
         resp = await client.post(
             "/api/v1/analysis/taxonomy",
-            params={
+            json={
                 "dataset_id": "ds-001",
                 "max_depth": 3,
                 "max_categories": 8,
@@ -161,7 +161,7 @@ async def test_taxonomy_endpoint(client):
     assert resp.status_code == 200
     body = resp.json()
     assert body["success"] is True
-    assert "data" in body
+    assert "root_categories" in body
 
 
 @pytest.mark.asyncio
@@ -183,7 +183,7 @@ async def test_causal_chain_cache_hit(client):
 
         resp = await client.post(
             "/api/v1/analysis/causal-chain",
-            params={
+            json={
                 "dataset_id": "ds-001",
             },
         )
@@ -215,7 +215,7 @@ async def test_endpoint_failure_response(client):
 
         resp = await client.post(
             "/api/v1/analysis/causal-chain",
-            params={
+            json={
                 "dataset_id": "ds-001",
             },
         )

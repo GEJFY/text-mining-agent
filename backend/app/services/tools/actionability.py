@@ -6,7 +6,6 @@
 
 from __future__ import annotations
 
-import json
 from typing import TYPE_CHECKING, Any
 
 from app.core.logging import get_logger
@@ -114,8 +113,10 @@ JSON配列で出力:
 }}]"""
 
             try:
+                from app.services.tools import extract_json
+
                 response = await llm_orchestrator.invoke(prompt, TaskType.BATCH_CLASSIFICATION, max_tokens=2000)
-                items = json.loads(response.strip().strip("```json").strip("```"))
+                items = extract_json(response)
                 if not isinstance(items, list):
                     items = [items]
 
@@ -125,7 +126,7 @@ JSON配列で出力:
                         item["record_id"] = batch_ids[idx]
                         item["text_preview"] = batch_texts[idx][:100]
                     all_items.append(item)
-            except (json.JSONDecodeError, Exception) as e:
+            except Exception as e:
                 logger.warning("actionability_batch_failed", batch=batch_start, error=str(e))
 
         # スコア降順ソート

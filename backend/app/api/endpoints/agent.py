@@ -115,7 +115,7 @@ async def get_agent_logs(
     agent_id: str,
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
-    """エージェントのログを取得"""
+    """エージェントのログを取得（ポーリング用: insights, pending_approvalも返却）"""
     saved = await agent_store.load(agent_id)
     if not saved:
         raise HTTPException(status_code=404, detail="Agent not found")
@@ -124,6 +124,94 @@ async def get_agent_logs(
         "agent_id": agent_id,
         "state": saved.get("state", "unknown"),
         "logs": saved.get("logs", []),
+        "insights": saved.get("insights", []),
+        "pending_approval": saved.get("pending_approval"),
+    }
+
+
+@router.post("/{agent_id}/save")
+async def save_agent_session(
+    agent_id: str,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(require_role(UserRole.ADMIN, UserRole.ANALYST)),
+) -> dict:
+    """エージェント分析結果をDB永続化（Redis→DB）"""
+    from app.models.orm import AgentSession
+
+    saved = await agent_store.load(agent_id)
+    if not saved:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    session = AgentSession(
+        id=agent_id,
+        dataset_id=saved.get("dataset_id", ""),
+        objective=saved.get("objective", ""),
+        insights=saved.get("insights", []),
+        logs=saved.get("logs", []),
+        status=saved.get("state", "completed"),
+    )
+    db.add(session)
+    await db.flush()
+
+    return {"saved": True, "session_id": agent_id}
+
+
+@router.get("/sessions/list")
+async def list_agent_sessions(
+    dataset_id: str | None = None,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """保存済みエージェントセッション一覧"""
+    from sqlalchemy import select
+
+    from app.models.orm import AgentSession
+
+    query = select(AgentSession).order_by(AgentSession.created_at.desc())
+    if dataset_id:
+        query = query.where(AgentSession.dataset_id == dataset_id)
+    result = await db.execute(query.limit(50))
+    sessions = result.scalars().all()
+
+    return {
+        "sessions": [
+            {
+                "id": s.id,
+                "dataset_id": s.dataset_id,
+                "objective": s.objective,
+                "status": s.status,
+                "insight_count": len(s.insights) if isinstance(s.insights, list) else 0,
+                "created_at": s.created_at.isoformat() if s.created_at else None,
+            }
+            for s in sessions
+        ]
+    }
+
+
+@router.get("/sessions/{session_id}")
+async def get_agent_session(
+    session_id: str,
+    db: AsyncSession = Depends(get_db),
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """保存済みセッション詳細取得"""
+    from sqlalchemy import select
+
+    from app.models.orm import AgentSession
+
+    result = await db.execute(select(AgentSession).where(AgentSession.id == session_id))
+    session = result.scalar_one_or_none()
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    return {
+        "id": session.id,
+        "dataset_id": session.dataset_id,
+        "objective": session.objective,
+        "insights": session.insights,
+        "logs": session.logs,
+        "status": session.status,
+        "created_at": session.created_at.isoformat() if session.created_at else None,
     }
 
 

@@ -59,9 +59,11 @@ class ClusterRequest(BaseModel):
     dataset_id: str
     algorithm: ClusterAlgorithm = ClusterAlgorithm.KMEANS
     n_clusters: int | None = Field(default=5, ge=2, le=50)
+    min_cluster_size: int | None = Field(default=None, ge=2, le=100)
     umap_n_neighbors: int = Field(default=15, ge=2, le=200)
     umap_min_dist: float = Field(default=0.1, ge=0.0, le=1.0)
     embedding_model: str | None = None
+    filters: dict | None = None
 
 
 class ClusterLabel(BaseModel):
@@ -69,7 +71,7 @@ class ClusterLabel(BaseModel):
 
     cluster_id: int
     title: str = Field(max_length=15)
-    summary: str = Field(max_length=100)
+    summary: str = Field(max_length=500)
     keywords: list[str]
     size: int
     centroid_texts: list[str]
@@ -85,6 +87,7 @@ class ClusterResult(BaseModel):
     umap_coordinates: list[list[float]]
     cluster_assignments: list[int]
     silhouette_score: float
+    point_texts: list[str] = []
 
 
 # === 感情分析 ===
@@ -113,6 +116,7 @@ class SentimentRequest(BaseModel):
     mode: SentimentMode = SentimentMode.BASIC
     custom_axes: list[SentimentAxisDefinition] | None = None
     multi_label: bool = False
+    filters: dict | None = None
 
 
 class SentimentEstimate(BaseModel):
@@ -142,6 +146,7 @@ class SentimentResult(BaseModel):
     results: list[SentimentResultItem]
     distribution: dict[str, int]
     time_series: list[dict] | None = None
+    text_previews: dict[str, str] = {}
 
 
 # === 共起ネットワーク ===
@@ -155,6 +160,7 @@ class CooccurrenceRequest(BaseModel):
     window_size: int = Field(default=5, ge=2, le=20)
     time_slice: bool = False
     time_interval: str | None = None  # month, week, day
+    filters: dict | None = None
 
 
 class NetworkNode(BaseModel):
@@ -261,6 +267,55 @@ class ReportResponse(BaseModel):
     generated_at: datetime
 
 
+# === LLM分析リクエスト ===
+
+
+class CausalChainRequest(BaseModel):
+    """因果連鎖分析リクエスト"""
+
+    dataset_id: str
+    max_chains: int = Field(default=10, ge=1, le=50)
+    focus_topic: str = ""
+    filters: dict | None = None
+
+
+class ContradictionRequest(BaseModel):
+    """矛盾検出リクエスト"""
+
+    dataset_id: str
+    sensitivity: str = "medium"
+    filters: dict | None = None
+
+
+class ActionabilityRequest(BaseModel):
+    """アクショナビリティスコアリングリクエスト"""
+
+    dataset_id: str
+    context: str = ""
+    max_items: int = Field(default=100, ge=1, le=1000)
+    filters: dict | None = None
+
+
+class TaxonomyRequest(BaseModel):
+    """タクソノミー生成リクエスト"""
+
+    dataset_id: str
+    max_depth: int = Field(default=3, ge=1, le=10)
+    max_categories: int = Field(default=8, ge=2, le=50)
+    filters: dict | None = None
+
+
+# === ストップワード管理 ===
+
+
+class StopwordUpdateRequest(BaseModel):
+    """ストップワード更新リクエスト"""
+
+    category: str = Field(description="ja / en / custom")
+    words: list[str]
+    mode: str = Field(default="add", description="replace / add / remove")
+
+
 # === 因果連鎖分析 ===
 
 
@@ -346,6 +401,16 @@ class TaxonomyResult(BaseModel):
 
     root_categories: list[TaxonomyNode]
     uncategorized_count: int = 0
+
+
+# === コミュニティ命名 ===
+
+
+class CommunityNamingRequest(BaseModel):
+    """LLMによるコミュニティ命名リクエスト"""
+
+    dataset_id: str
+    communities: dict[str, list[str]]  # { "0": ["word1","word2",...], ... }
 
 
 # === パイプライン ===

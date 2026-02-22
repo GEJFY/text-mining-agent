@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -18,6 +18,10 @@ import {
 import { useAnalysisStore } from "../stores/analysisStore";
 import { causalChainApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * 因果連鎖分析ページ
@@ -32,7 +36,7 @@ interface CausalChainItem {
 }
 
 function CausalChainPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -43,6 +47,16 @@ function CausalChainPage() {
 
   // 結果
   const [chains, setChains] = useState<CausalChainItem[]>([]);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("causalChain");
+    if (cached?.hasResults) {
+      setChains(cached.data.chains ?? []);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   const handleRun = async () => {
     if (!activeDatasetId) return;
@@ -53,6 +67,7 @@ function CausalChainPage() {
       const response = await causalChainApi.run(activeDatasetId, {
         max_chains: maxChains,
         focus_topic: focusTopic || undefined,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -72,6 +87,7 @@ function CausalChainPage() {
 
       setChains(mapped);
       setHasResults(true);
+      setCachedResult("causalChain", { data: { chains: mapped }, hasResults: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "因果連鎖分析に失敗しました";
@@ -130,8 +146,9 @@ function CausalChainPage() {
                 {/* 最大チェーン数 */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       最大チェーン数
+                      <InfoTooltip title="最大チェーン数" text="LLMが抽出する因果関係チェーン（原因→結果→影響）の最大数です。多くすると網羅的な分析が得られますが、LLM呼び出し回数が増え処理時間とコストが増加します。まずは5-10で全体像を把握し、必要に応じて増やしてください。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {maxChains}
@@ -153,8 +170,9 @@ function CausalChainPage() {
 
                 {/* フォーカストピック */}
                 <div>
-                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                     フォーカストピック（任意）
+                    <InfoTooltip title="フォーカストピック" text="特定のテーマに絞って因果関係を抽出します。例えば「顧客離反」と入力すると、顧客離反に関連する因果チェーンを重点的に抽出します。空欄の場合はデータ全体からLLMが自動的に重要な因果関係を発見します。" />
                   </label>
                   <input
                     type="text"
@@ -185,6 +203,12 @@ function CausalChainPage() {
                 )}
               </button>
             </div>
+
+            {/* 進捗タイムライン */}
+            <AnalysisProgress steps={ANALYSIS_STEPS.causalChain} isRunning={isRunning} />
+
+            {/* 属性フィルタ */}
+            <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
             {/* サマリー */}
             {hasResults && (
@@ -233,7 +257,7 @@ function CausalChainPage() {
                     </h3>
                     <ResponsiveContainer
                       width="100%"
-                      height={Math.max(200, chartData.length * 40)}
+                      height={Math.max(300, chartData.length * 45)}
                     >
                       <BarChart data={chartData} layout="vertical">
                         <CartesianGrid
@@ -250,7 +274,7 @@ function CausalChainPage() {
                         <YAxis
                           type="category"
                           dataKey="name"
-                          width={200}
+                          width={250}
                           tick={{ fill: "#9ca3af", fontSize: 11 }}
                         />
                         <Tooltip

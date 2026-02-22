@@ -108,10 +108,10 @@ def test_pipeline_request_with_objective():
     req = PipelineRequest(
         dataset_id="ds-001",
         objective="品質分析",
-        template=ReportTemplate.COMPETITOR,
+        template=ReportTemplate.AUDIT,
     )
     assert req.objective == "品質分析"
-    assert req.template == ReportTemplate.COMPETITOR
+    assert req.template == ReportTemplate.AUDIT
 
 
 def test_pipeline_request_report_formats():

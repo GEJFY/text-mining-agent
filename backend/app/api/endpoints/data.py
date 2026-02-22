@@ -122,11 +122,7 @@ async def get_dataset_attributes(
     _current_user: TokenData = Depends(get_current_user),
 ) -> dict:
     """データセットの属性メタデータを取得（フィルタ用）"""
-    result = await db.execute(
-        select(TextRecord.attributes)
-        .where(TextRecord.dataset_id == dataset_id)
-        .limit(500)
-    )
+    result = await db.execute(select(TextRecord.attributes).where(TextRecord.dataset_id == dataset_id).limit(500))
     rows = result.scalars().all()
     if not rows:
         raise HTTPException(status_code=404, detail="Dataset not found or empty")
@@ -155,12 +151,14 @@ async def get_dataset_attributes(
             attr_type = "categorical"
         else:
             attr_type = "text"
-        attributes.append({
-            "name": key,
-            "type": attr_type,
-            "unique_values": sorted(meta["values"])[:50] if attr_type == "categorical" else [],
-            "unique_count": unique_count,
-        })
+        attributes.append(
+            {
+                "name": key,
+                "type": attr_type,
+                "unique_values": sorted(meta["values"])[:50] if attr_type == "categorical" else [],
+                "unique_count": unique_count,
+            }
+        )
 
     return {"dataset_id": dataset_id, "attributes": attributes}
 
@@ -179,6 +177,7 @@ async def delete_dataset(
     await db.flush()
 
     from app.services.cache import analysis_cache
+
     await analysis_cache.invalidate_dataset(dataset_id)
 
     return {"deleted": True, "dataset_id": dataset_id}

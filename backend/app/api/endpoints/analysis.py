@@ -183,9 +183,7 @@ async def name_communities(
             f"テーマ名のみを出力してください。説明不要。"
         )
         try:
-            resp = await llm_orchestrator.invoke(
-                LLMRequest(prompt=prompt, max_tokens=30, temperature=0.3)
-            )
+            resp = await llm_orchestrator.invoke(LLMRequest(prompt=prompt, max_tokens=30, temperature=0.3))
             name = resp.content.strip().strip("「」\"'").strip()[:15]
             names[cid] = name if name else f"コミュニティ {int(cid) + 1}"
         except Exception:

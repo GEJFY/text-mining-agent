@@ -63,8 +63,7 @@ class ClusteringService:
 
         # クラスタリング実行（スレッドで実行）
         labels, n_clusters = await loop.run_in_executor(
-            None, self._run_clustering, embeddings, request.algorithm,
-            request.n_clusters, request.min_cluster_size
+            None, self._run_clustering, embeddings, request.algorithm, request.n_clusters, request.min_cluster_size
         )
 
         # シルエットスコア
@@ -113,8 +112,11 @@ class ClusteringService:
             return pca.fit_transform(embeddings)
 
     def _run_clustering(
-        self, embeddings: np.ndarray, algorithm: ClusterAlgorithm,
-        n_clusters: int | None, min_cluster_size: int | None = None,
+        self,
+        embeddings: np.ndarray,
+        algorithm: ClusterAlgorithm,
+        n_clusters: int | None,
+        min_cluster_size: int | None = None,
     ) -> tuple[np.ndarray, int]:
         """アルゴリズム別クラスタリング"""
         if algorithm == ClusterAlgorithm.KMEANS:

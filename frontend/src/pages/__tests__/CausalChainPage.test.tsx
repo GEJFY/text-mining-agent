@@ -9,6 +9,9 @@ vi.mock("../../api/client", () => ({
   causalChainApi: {
     run: vi.fn(),
   },
+  datasetsApi: {
+    getAttributes: vi.fn().mockResolvedValue({ data: { attributes: [] } }),
+  },
 }));
 
 import { causalChainApi } from "../../api/client";

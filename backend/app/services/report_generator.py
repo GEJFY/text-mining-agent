@@ -464,8 +464,12 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
             return ["概要", "分析結果", "考察", "推奨事項"]
 
     async def _export(
-        self, report_id: str, contents: list[dict], fmt: ReportFormat,
-        *, title: str = "NexusText AI 分析レポート",
+        self,
+        report_id: str,
+        contents: list[dict],
+        fmt: ReportFormat,
+        *,
+        title: str = "NexusText AI 分析レポート",
     ) -> Path:
         """各形式でファイルを出力"""
         if fmt == ReportFormat.PPTX:
@@ -479,8 +483,11 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         raise ValueError(f"Unknown format: {fmt}")
 
     async def _export_pptx(
-        self, report_id: str, contents: list[dict],
-        *, title: str = "NexusText AI 分析レポート",
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
     ) -> Path:
         """PowerPoint出力"""
         from pptx import Presentation
@@ -502,8 +509,11 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         return path
 
     async def _export_pdf(
-        self, report_id: str, contents: list[dict],
-        *, title: str = "NexusText AI 分析レポート",
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
     ) -> Path:
         """PDF出力（CJKフォント対応）"""
         from reportlab.lib.pagesizes import A4
@@ -560,8 +570,11 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         return path
 
     async def _export_docx(
-        self, report_id: str, contents: list[dict],
-        *, title: str = "NexusText AI 分析レポート",
+        self,
+        report_id: str,
+        contents: list[dict],
+        *,
+        title: str = "NexusText AI 分析レポート",
     ) -> Path:
         """Word出力"""
         from docx import Document

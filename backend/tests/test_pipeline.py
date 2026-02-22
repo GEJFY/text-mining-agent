@@ -99,3 +99,25 @@ def test_pipeline_request_schema():
     assert req.objective == ""
     assert req.template.value == "voc"
     assert req.output_format.value == "pdf"
+
+
+def test_pipeline_request_with_objective():
+    """PipelineRequestにobjective・templateを指定"""
+    from app.models.schemas import ReportTemplate
+
+    req = PipelineRequest(
+        dataset_id="ds-001",
+        objective="品質分析",
+        template=ReportTemplate.AUDIT,
+    )
+    assert req.objective == "品質分析"
+    assert req.template == ReportTemplate.AUDIT
+
+
+def test_pipeline_request_report_formats():
+    """PipelineRequestに各レポートフォーマットを指定"""
+    from app.models.schemas import ReportFormat
+
+    for fmt in ReportFormat:
+        req = PipelineRequest(dataset_id="ds-001", output_format=fmt)
+        assert req.output_format == fmt

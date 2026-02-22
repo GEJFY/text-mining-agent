@@ -1,7 +1,8 @@
 """分析エンドポイントテスト
 
-4つの新LLM分析エンドポイント (causal-chain, contradiction, actionability, taxonomy) の
-HTTP 200レスポンス形式を検証。analysis_registry.execute をモックして高速テスト。
+LLM分析エンドポイント (causal-chain, contradiction, actionability, taxonomy,
+cluster, sentiment, cooccurrence) のHTTP 200レスポンス形式を検証。
+analysis_registry.execute をモックして高速テスト。
 """
 
 from unittest.mock import AsyncMock, patch
@@ -224,3 +225,111 @@ async def test_endpoint_failure_response(client):
     body = resp.json()
     assert body["success"] is False
     assert body["error"] == "解析失敗"
+
+
+@pytest.mark.asyncio
+async def test_cluster_endpoint(client):
+    """POST /analysis/cluster → 200"""
+    from app.models.schemas import ClusterResult
+
+    mock_result = ClusterResult(
+        job_id="job-cluster-001",
+        algorithm="kmeans",
+        clusters=[],
+        outliers=[],
+        umap_coordinates=[],
+        cluster_assignments=[],
+        silhouette_score=0.5,
+    )
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
+        patch("app.api.endpoints.analysis.ClusteringService") as mock_svc_cls,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
+        mock_svc = AsyncMock()
+        mock_svc.analyze.return_value = mock_result
+        mock_svc_cls.return_value = mock_svc
+
+        resp = await client.post(
+            "/api/v1/analysis/cluster",
+            json={
+                "dataset_id": "ds-001",
+                "algorithm": "kmeans",
+                "n_clusters": 3,
+            },
+        )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_sentiment_endpoint(client):
+    """POST /analysis/sentiment → 200"""
+    from app.models.schemas import SentimentResult
+
+    mock_result = SentimentResult(
+        job_id="job-sent-001",
+        mode="basic",
+        axes=["ポジティブ-ネガティブ"],
+        results=[],
+        distribution={},
+    )
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
+        patch("app.api.endpoints.analysis.SentimentService") as mock_svc_cls,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
+        mock_svc = AsyncMock()
+        mock_svc.analyze.return_value = mock_result
+        mock_svc_cls.return_value = mock_svc
+
+        resp = await client.post(
+            "/api/v1/analysis/sentiment",
+            json={
+                "dataset_id": "ds-001",
+                "mode": "basic",
+            },
+        )
+
+    assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_cooccurrence_endpoint(client):
+    """POST /analysis/cooccurrence → 200"""
+    from app.models.schemas import CooccurrenceResult
+
+    mock_result = CooccurrenceResult(
+        nodes=[],
+        edges=[],
+        communities={},
+        modularity=0.0,
+    )
+    with (
+        patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
+        patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
+        patch("app.api.endpoints.analysis.cooccurrence_service") as mock_svc,
+    ):
+        mock_cache.get = AsyncMock(return_value=None)
+        mock_cache.set = AsyncMock()
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
+        mock_svc.analyze.return_value = mock_result
+
+        resp = await client.post(
+            "/api/v1/analysis/cooccurrence",
+            json={
+                "dataset_id": "ds-001",
+                "min_frequency": 2,
+            },
+        )
+
+    assert resp.status_code == 200

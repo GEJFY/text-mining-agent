@@ -40,9 +40,10 @@ class TestSecurityHeaders:
             assert res.headers.get(header) == value, f"Missing or wrong header on 404: {header}"
 
     @pytest.mark.asyncio
-    async def test_csp_header_present(self, client: AsyncClient) -> None:
-        """Content-Security-Policyヘッダーが存在する"""
+    async def test_permissions_policy_header(self, client: AsyncClient) -> None:
+        """Permissions-Policyヘッダーが正しいディレクティブを含む"""
         res = await client.get("/health")
-        csp = res.headers.get("content-security-policy")
-        assert csp is not None, "CSP header missing"
-        assert "default-src" in csp
+        pp = res.headers.get("permissions-policy")
+        assert pp is not None, "Permissions-Policy header missing"
+        assert "camera=()" in pp
+        assert "microphone=()" in pp

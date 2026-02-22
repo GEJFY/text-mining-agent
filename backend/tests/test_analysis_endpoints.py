@@ -230,19 +230,28 @@ async def test_endpoint_failure_response(client):
 @pytest.mark.asyncio
 async def test_cluster_endpoint(client):
     """POST /analysis/cluster → 200"""
+    from app.models.schemas import ClusterResult
+
+    mock_result = ClusterResult(
+        job_id="job-cluster-001",
+        algorithm="kmeans",
+        clusters=[],
+        outliers=[],
+        umap_coordinates=[],
+        cluster_assignments=[],
+        silhouette_score=0.5,
+    )
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
         patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
         patch("app.api.endpoints.analysis.ClusteringService") as mock_svc_cls,
     ):
         mock_cache.get = AsyncMock(return_value=None)
         mock_cache.set = AsyncMock()
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
         mock_svc = AsyncMock()
-        mock_svc.run.return_value = {
-            "clusters": [],
-            "scatter": [],
-            "silhouette_score": 0.5,
-        }
+        mock_svc.analyze.return_value = mock_result
         mock_svc_cls.return_value = mock_svc
 
         resp = await client.post(
@@ -260,18 +269,26 @@ async def test_cluster_endpoint(client):
 @pytest.mark.asyncio
 async def test_sentiment_endpoint(client):
     """POST /analysis/sentiment → 200"""
+    from app.models.schemas import SentimentResult
+
+    mock_result = SentimentResult(
+        job_id="job-sent-001",
+        mode="basic",
+        axes=["ポジティブ-ネガティブ"],
+        results=[],
+        distribution={},
+    )
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
         patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
         patch("app.api.endpoints.analysis.SentimentService") as mock_svc_cls,
     ):
         mock_cache.get = AsyncMock(return_value=None)
         mock_cache.set = AsyncMock()
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
         mock_svc = AsyncMock()
-        mock_svc.run.return_value = {
-            "results": [],
-            "distribution": {},
-        }
+        mock_svc.analyze.return_value = mock_result
         mock_svc_cls.return_value = mock_svc
 
         resp = await client.post(
@@ -288,20 +305,24 @@ async def test_sentiment_endpoint(client):
 @pytest.mark.asyncio
 async def test_cooccurrence_endpoint(client):
     """POST /analysis/cooccurrence → 200"""
+    from app.models.schemas import CooccurrenceResult
+
+    mock_result = CooccurrenceResult(
+        nodes=[],
+        edges=[],
+        communities={},
+        modularity=0.0,
+    )
     with (
         patch("app.api.endpoints.analysis.analysis_cache") as mock_cache,
         patch("app.api.endpoints.analysis._save_analysis_job", new_callable=AsyncMock),
-        patch("app.api.endpoints.analysis.CooccurrenceService") as mock_svc_cls,
+        patch("app.api.endpoints.analysis._fetch_texts", new_callable=AsyncMock) as mock_fetch,
+        patch("app.api.endpoints.analysis.cooccurrence_service") as mock_svc,
     ):
         mock_cache.get = AsyncMock(return_value=None)
         mock_cache.set = AsyncMock()
-        mock_svc = AsyncMock()
-        mock_svc.run.return_value = {
-            "nodes": [],
-            "edges": [],
-            "communities": [],
-        }
-        mock_svc_cls.return_value = mock_svc
+        mock_fetch.return_value = (["テスト文"], ["r1"], [None])
+        mock_svc.analyze.return_value = mock_result
 
         resp = await client.post(
             "/api/v1/analysis/cooccurrence",

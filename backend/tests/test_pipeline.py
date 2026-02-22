@@ -101,15 +101,17 @@ def test_pipeline_request_schema():
     assert req.output_format.value == "pdf"
 
 
-def test_pipeline_request_with_custom_prompt():
-    """PipelineRequestにカスタムプロンプトを指定"""
+def test_pipeline_request_with_objective():
+    """PipelineRequestにobjective・templateを指定"""
+    from app.models.schemas import ReportTemplate
+
     req = PipelineRequest(
         dataset_id="ds-001",
         objective="品質分析",
-        custom_prompt="製品品質の観点からレポートを作成してください",
+        template=ReportTemplate.COMPETITOR,
     )
-    assert req.custom_prompt == "製品品質の観点からレポートを作成してください"
     assert req.objective == "品質分析"
+    assert req.template == ReportTemplate.COMPETITOR
 
 
 def test_pipeline_request_report_formats():

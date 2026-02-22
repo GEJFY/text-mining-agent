@@ -6,19 +6,19 @@ export default {
   theme: {
     extend: {
       colors: {
-        // NexusText AI ブランドカラー
+        // NexusText AI ブランドカラー（CSSカスタムプロパティ参照）
         nexus: {
-          50: "#eef2ff",
-          100: "#e0e7ff",
-          200: "#c7d2fe",
-          300: "#a5b4fc",
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-          800: "#3730a3",
-          900: "#312e81",
-          950: "#1e1b4b",
+          50: "var(--color-nexus-50)",
+          100: "var(--color-nexus-100)",
+          200: "var(--color-nexus-200)",
+          300: "var(--color-nexus-300)",
+          400: "var(--color-nexus-400)",
+          500: "var(--color-nexus-500)",
+          600: "var(--color-nexus-600)",
+          700: "var(--color-nexus-700)",
+          800: "var(--color-nexus-800)",
+          900: "var(--color-nexus-900)",
+          950: "var(--color-nexus-950)",
         },
       },
       fontFamily: {

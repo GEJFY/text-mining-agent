@@ -111,6 +111,9 @@ class SentimentService:
         if dates:
             time_series = self._build_time_series(results, dates[: len(results)])
 
+        # テキストプレビュー（record_id → テキスト冒頭80文字）
+        text_previews = {rid: t[:80] for rid, t in zip(record_ids, texts)}
+
         return SentimentResult(
             job_id=job_id,
             mode=request.mode,
@@ -118,6 +121,7 @@ class SentimentService:
             results=results,
             distribution=distribution,
             time_series=time_series,
+            text_previews=text_previews,
         )
 
     async def _analyze_batch(

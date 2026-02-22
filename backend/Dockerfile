@@ -48,6 +48,7 @@ LABEL description="NexusText AI Backend - FastAPI Application"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
+    fonts-ipaexfont \
     && rm -rf /var/lib/apt/lists/*
 
 # 非rootユーザーの作成

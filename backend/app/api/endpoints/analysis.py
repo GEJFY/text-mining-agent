@@ -18,6 +18,7 @@ from app.models.schemas import (
     CausalChainRequest,
     ClusterRequest,
     ClusterResult,
+    CommunityNamingRequest,
     ContradictionRequest,
     CooccurrenceRequest,
     CooccurrenceResult,
@@ -37,9 +38,13 @@ from app.services.sentiment import SentimentService
 router = APIRouter()
 
 
-async def _fetch_texts(dataset_id: str, db: AsyncSession) -> tuple[list[str], list[str], list[str | None]]:
-    """データセットからテキストを取得（共通ヘルパー）"""
-    texts, record_ids, dates = await get_texts_by_dataset(dataset_id, db)
+async def _fetch_texts(
+    dataset_id: str,
+    db: AsyncSession,
+    filters: dict | None = None,
+) -> tuple[list[str], list[str], list[str | None]]:
+    """データセットからテキストを取得（共通ヘルパー、フィルタ対応）"""
+    texts, record_ids, dates = await get_texts_by_dataset(dataset_id, db, filters=filters)
     if not texts:
         raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found or empty")
     return texts, record_ids, dates
@@ -79,7 +84,7 @@ async def run_clustering(
     cached = await analysis_cache.get(request.dataset_id, "cluster", params)
     if cached:
         return ClusterResult(**cached)
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = ClusteringService(llm_orchestrator)
     result = await service.analyze(request, texts)
     await _save_analysis_job(db, request.dataset_id, "cluster", params, result.model_dump())
@@ -108,7 +113,7 @@ async def estimate_sentiment(
     _current_user: TokenData = Depends(get_current_user),
 ) -> SentimentEstimate:
     """感情分析のコスト見積り"""
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = SentimentService(llm_orchestrator)
     return service.estimate_cost(texts, request)
 
@@ -124,9 +129,9 @@ async def run_sentiment(
     cached = await analysis_cache.get(request.dataset_id, "sentiment", params)
     if cached:
         return SentimentResult(**cached)
-    texts, record_ids, _ = await _fetch_texts(request.dataset_id, db)
+    texts, record_ids, dates = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     service = SentimentService(llm_orchestrator)
-    result = await service.analyze(request, texts, record_ids)
+    result = await service.analyze(request, texts, record_ids, dates=dates)
     await _save_analysis_job(db, request.dataset_id, "sentiment", params, result.model_dump())
     await analysis_cache.set(request.dataset_id, "sentiment", params, result.model_dump(), ttl=3600)
     return result
@@ -143,7 +148,7 @@ async def run_cooccurrence(
     cached = await analysis_cache.get(request.dataset_id, "cooccurrence", params)
     if cached:
         return CooccurrenceResult(**cached)
-    texts, _, _ = await _fetch_texts(request.dataset_id, db)
+    texts, _, _ = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     result = cooccurrence_service.analyze(texts, request)
     await _save_analysis_job(db, request.dataset_id, "cooccurrence", params, result.model_dump())
     await analysis_cache.set(request.dataset_id, "cooccurrence", params, result.model_dump(), ttl=3600)
@@ -157,8 +162,35 @@ async def run_cooccurrence_timeslice(
     _current_user: TokenData = Depends(get_current_user),
 ) -> list[dict]:
     """時間スライス共起ネットワーク分析"""
-    texts, _, dates = await _fetch_texts(request.dataset_id, db)
+    texts, _, dates = await _fetch_texts(request.dataset_id, db, filters=request.filters)
     return cooccurrence_service.time_sliced_analysis(texts, dates, request)
+
+
+@router.post("/cooccurrence/name-communities")
+async def name_communities(
+    request: CommunityNamingRequest,
+    _current_user: TokenData = Depends(get_current_user),
+) -> dict:
+    """LLMでコミュニティにテーマ名を付与"""
+    from app.services.llm_providers.base import LLMRequest
+
+    names: dict[str, str] = {}
+    for cid, words in request.communities.items():
+        top_words = words[:15]
+        prompt = (
+            f"以下の単語グループに、10文字以内の日本語テーマ名を1つだけ付けてください。\n"
+            f"単語リスト: {', '.join(top_words)}\n"
+            f"テーマ名のみを出力してください。説明不要。"
+        )
+        try:
+            resp = await llm_orchestrator.invoke(
+                LLMRequest(prompt=prompt, max_tokens=30, temperature=0.3)
+            )
+            name = resp.content.strip().strip("「」\"'").strip()[:15]
+            names[cid] = name if name else f"コミュニティ {int(cid) + 1}"
+        except Exception:
+            names[cid] = f"コミュニティ {int(cid) + 1}"
+    return {"names": names}
 
 
 @router.post("/similarity/search")
@@ -227,7 +259,7 @@ async def run_causal_chain(
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
@@ -260,7 +292,7 @@ async def run_contradiction(
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
@@ -294,7 +326,7 @@ async def run_actionability(
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,
@@ -328,7 +360,7 @@ async def run_taxonomy(
     )
     response = {
         "success": result.success,
-        "data": result.data,
+        **result.data,
         "summary": result.summary,
         "key_findings": result.key_findings,
         "error": result.error,

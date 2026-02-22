@@ -14,6 +14,10 @@ import * as d3 from "d3";
 import { useAnalysisStore } from "../stores/analysisStore";
 import { cooccurrenceApi, stopwordsApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * 共起ネットワークページ
@@ -72,7 +76,7 @@ interface StopwordState {
 }
 
 function CooccurrencePage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [minFrequency, setMinFrequency] = useState(3);
@@ -100,6 +104,21 @@ function CooccurrencePage() {
   const [activeTab, setActiveTab] = useState<"ja" | "en" | "custom">("ja");
   const [newStopword, setNewStopword] = useState("");
   const [stopwordsLoaded, setStopwordsLoaded] = useState(false);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("cooccurrence");
+    if (cached?.hasResults) {
+      const d = cached.data;
+      setNodes(d.nodes ?? []);
+      setEdges(d.edges ?? []);
+      setCommunities(d.communities ?? []);
+      setWordCloud(d.wordCloud ?? []);
+      setModularity(d.modularity ?? 0);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   // ストップワード初回ロード
   useEffect(() => {
@@ -123,7 +142,7 @@ function CooccurrencePage() {
     svg.selectAll("*").remove();
 
     const width = svgRef.current.clientWidth || 800;
-    const height = 450;
+    const height = 520;
 
     // ズーム設定
     const g = svg.append("g");
@@ -157,11 +176,13 @@ function CooccurrencePage() {
           .id((d) => d.id)
           .distance((d) => 80 - (d.weight / maxWeight) * 40),
       )
-      .force("charge", d3.forceManyBody().strength(-200))
+      .force("charge", d3.forceManyBody().strength(-350))
       .force("center", d3.forceCenter(width / 2, height / 2))
+      .force("x", d3.forceX(width / 2).strength(0.05))
+      .force("y", d3.forceY(height / 2).strength(0.05))
       .force(
         "collision",
-        d3.forceCollide<GraphNode>().radius((d) => d.r + 4),
+        d3.forceCollide<GraphNode>().radius((d) => d.r + 8),
       );
 
     // エッジ描画
@@ -234,6 +255,44 @@ function CooccurrencePage() {
       .append("title")
       .text((d) => `${d.word}\n出現頻度: ${d.frequency}`);
 
+    // ホバーハイライト
+    node
+      .on("mouseenter", (_event, d) => {
+        // 接続ノードIDを収集
+        const connectedIds = new Set<string>();
+        connectedIds.add(d.id);
+        simEdges.forEach((e) => {
+          const srcId = typeof e.source === "string" ? e.source : (e.source as GraphNode).id;
+          const tgtId = typeof e.target === "string" ? e.target : (e.target as GraphNode).id;
+          if (srcId === d.id) connectedIds.add(tgtId);
+          if (tgtId === d.id) connectedIds.add(srcId);
+        });
+        node.attr("opacity", (n) => connectedIds.has(n.id) ? 1 : 0.15);
+        link.attr("stroke-opacity", (e) => {
+          const srcId = typeof e.source === "string" ? e.source : (e.source as GraphNode).id;
+          const tgtId = typeof e.target === "string" ? e.target : (e.target as GraphNode).id;
+          return srcId === d.id || tgtId === d.id
+            ? 0.15 + ((e as GraphEdge).weight / maxWeight) * 0.7
+            : 0.03;
+        });
+      })
+      .on("mouseleave", () => {
+        // コミュニティフィルタが有効ならそちらを復元
+        if (selectedCommunity !== null) {
+          node.attr("opacity", (n) => n.community === selectedCommunity ? 1 : 0.15);
+          link.attr("stroke-opacity", (e) => {
+            const src = e.source as GraphNode;
+            const tgt = e.target as GraphNode;
+            return src.community === selectedCommunity || tgt.community === selectedCommunity
+              ? 0.15 + ((e as GraphEdge).weight / maxWeight) * 0.5
+              : 0.03;
+          });
+        } else {
+          node.attr("opacity", 1);
+          link.attr("stroke-opacity", (e) => 0.15 + ((e as GraphEdge).weight / maxWeight) * 0.5);
+        }
+      });
+
     // Tick更新
     simulation.on("tick", () => {
       link
@@ -243,6 +302,37 @@ function CooccurrencePage() {
         .attr("y2", (d) => (d.target as GraphNode).y ?? 0);
 
       node.attr("transform", (d) => `translate(${d.x ?? 0},${d.y ?? 0})`);
+    });
+
+    // Zoom-to-fit: simulation終了後に全ノードが画面内に収まるよう自動ズーム
+    simulation.on("end", () => {
+      if (simNodes.length === 0) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      simNodes.forEach((n) => {
+        const x = n.x ?? 0;
+        const y = n.y ?? 0;
+        const r = n.r ?? 10;
+        if (x - r < minX) minX = x - r;
+        if (y - r < minY) minY = y - r;
+        if (x + r > maxX) maxX = x + r;
+        if (y + r > maxY) maxY = y + r;
+      });
+      const bw = maxX - minX;
+      const bh = maxY - minY;
+      if (bw <= 0 || bh <= 0) return;
+      const padding = 40;
+      const scale = Math.min(
+        (width - padding * 2) / bw,
+        (height - padding * 2) / bh,
+        2,
+      );
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+      const transform = d3.zoomIdentity
+        .translate(width / 2, height / 2)
+        .scale(scale)
+        .translate(-cx, -cy);
+      svg.transition().duration(750).call(zoom.transform, transform);
     });
 
     // コミュニティフィルタ
@@ -279,7 +369,7 @@ function CooccurrencePage() {
     svg.selectAll("*").remove();
 
     const width = wordCloudRef.current.clientWidth || 700;
-    const height = 280;
+    const height = 400;
 
     const g = svg
       .append("g")
@@ -294,33 +384,32 @@ function CooccurrencePage() {
     const placed: Array<{ x: number; y: number; w: number; h: number }> = [];
 
     sortedWords.forEach((item, i) => {
-      const fontSize = 14 + (item.frequency / maxFreq) * 42;
-      const rotation = i % 5 === 0 ? -90 : i % 7 === 0 ? 90 : 0;
-      const textW =
-        item.word.length * fontSize * (rotation !== 0 ? 0.4 : 0.65);
-      const textH = fontSize * (rotation !== 0 ? item.word.length * 0.65 : 1.2);
+      const fontSize = 16 + (item.frequency / maxFreq) * 48;
+      const rotation = 0; // 回転なし（可読性優先）
+      const textW = item.word.length * fontSize * 0.65;
+      const textH = fontSize * 1.2;
 
-      // スパイラル配置
+      // スパイラル配置（密集配置）
       let x = 0,
         y = 0;
       let step = 0;
       let foundSpot = false;
-      while (step < 500 && !foundSpot) {
+      while (step < 1200 && !foundSpot) {
         const angle = step * 0.15;
-        const radius = step * 0.8;
+        const radius = step * 0.5;
         x = Math.cos(angle) * radius;
         y = Math.sin(angle) * radius;
 
         const overlaps = placed.some(
           (p) =>
-            Math.abs(p.x - x) < (p.w + textW) / 2 + 4 &&
-            Math.abs(p.y - y) < (p.h + textH) / 2 + 2,
+            Math.abs(p.x - x) < (p.w + textW) / 2 + 3 &&
+            Math.abs(p.y - y) < (p.h + textH) / 2 + 3,
         );
 
         if (
           !overlaps &&
-          Math.abs(x) < width / 2 - 20 &&
-          Math.abs(y) < height / 2 - 15
+          Math.abs(x) < width / 2 - 10 &&
+          Math.abs(y) < height / 2 - 10
         ) {
           foundSpot = true;
         }
@@ -331,7 +420,7 @@ function CooccurrencePage() {
         placed.push({ x, y, w: textW, h: textH });
         const text = g
           .append("text")
-          .attr("transform", `translate(${x},${y}) rotate(${rotation})`)
+          .attr("transform", `translate(${x},${y})`)
           .attr("text-anchor", "middle")
           .attr("dominant-baseline", "central")
           .attr("font-size", `${fontSize}px`)
@@ -341,9 +430,15 @@ function CooccurrencePage() {
             fontSize > 35 ? "700" : fontSize > 25 ? "600" : "400",
           )
           .attr("fill", item.color)
-          .attr("opacity", 0.7 + (item.frequency / maxFreq) * 0.3)
           .style("cursor", "default")
+          .attr("opacity", 0)
           .text(item.word);
+
+        text
+          .transition()
+          .duration(400)
+          .delay(i * 30)
+          .attr("opacity", 0.7 + (item.frequency / maxFreq) * 0.3);
 
         text.append("title").text(`${item.word}: ${item.frequency}`);
       }
@@ -419,6 +514,7 @@ function CooccurrencePage() {
       const response = await cooccurrenceApi.run(activeDatasetId, {
         min_frequency: minFrequency,
         window_size: windowSize,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -481,20 +577,44 @@ function CooccurrencePage() {
       }));
       setNodes(mappedNodes);
 
-      // ワードクラウドデータ（頻度上位40語）
+      // ワードクラウドデータ（頻度上位50語）
       const sortedByFreq = [...rawNodes]
         .sort((a, b) => b.frequency - a.frequency)
-        .slice(0, 40);
+        .slice(0, 50);
       const topFreq = sortedByFreq[0]?.frequency ?? 1;
       const mappedWordCloud: WordCloudItem[] = sortedByFreq.map((n) => ({
         word: n.word,
-        size: 14 + (n.frequency / topFreq) * 42,
+        size: 16 + (n.frequency / topFreq) * 48,
         color: COMMUNITY_COLORS[n.community_id % COMMUNITY_COLORS.length],
         frequency: n.frequency,
       }));
       setWordCloud(mappedWordCloud);
 
       setHasResults(true);
+      setCachedResult("cooccurrence", {
+        data: { nodes: mappedNodes, edges: mappedEdges, communities: mappedCommunities, wordCloud: mappedWordCloud, modularity: data.modularity as number },
+        hasResults: true,
+      });
+
+      // LLMによるコミュニティ命名（非同期、失敗しても分析結果には影響しない）
+      try {
+        const namingRes = await cooccurrenceApi.nameCommunities(
+          activeDatasetId,
+          communityMap as Record<string, string[]>,
+        );
+        const names = namingRes.data.names as Record<string, string>;
+        const namedCommunities = mappedCommunities.map((c) => ({
+          ...c,
+          name: names[String(c.id)] ?? c.name,
+        }));
+        setCommunities(namedCommunities);
+        setCachedResult("cooccurrence", {
+          data: { nodes: mappedNodes, edges: mappedEdges, communities: namedCommunities, wordCloud: mappedWordCloud, modularity: data.modularity as number },
+          hasResults: true,
+        });
+      } catch {
+        // コミュニティ命名に失敗してもデフォルト名で継続
+      }
     } catch (err) {
       const message =
         err instanceof Error
@@ -550,8 +670,9 @@ function CooccurrencePage() {
               <div className="space-y-4">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       最小出現頻度
+                      <InfoTooltip title="最小出現頻度" text="ネットワークに表示する単語の最低出現回数です。値を大きくすると頻出語のみに絞られ、ノイズが減って主要な関係性が見やすくなります。小さくすると希少な単語も含まれ、詳細な分析が可能ですがグラフが複雑になります。データ量に応じて調整してください。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {minFrequency}
@@ -569,8 +690,9 @@ function CooccurrencePage() {
 
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       ウィンドウサイズ
+                      <InfoTooltip title="ウィンドウサイズ" text="共起を判定する文脈の広さ（単語数）です。値が小さい（2-3）と直接隣接する単語の関係のみを捉え、大きい（10-15）と文や段落レベルの広い文脈での共起関係を捉えます。一般的には5前後が適切です。大きくするとエッジが増え、グラフが密になります。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {windowSize}
@@ -605,6 +727,12 @@ function CooccurrencePage() {
                 )}
               </button>
             </div>
+
+            {/* 進捗タイムライン */}
+            <AnalysisProgress steps={ANALYSIS_STEPS.cooccurrence} isRunning={isRunning} />
+
+            {/* 属性フィルタ */}
+            <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
             {/* ストップワード管理 */}
             {stopwordsLoaded && (
@@ -815,7 +943,7 @@ function CooccurrencePage() {
                     <svg
                       ref={svgRef}
                       className="w-full"
-                      style={{ height: "450px" }}
+                      style={{ height: "520px" }}
                     />
                   </div>
 
@@ -852,7 +980,7 @@ function CooccurrencePage() {
                       <svg
                         ref={wordCloudRef}
                         className="w-full"
-                        style={{ height: "280px" }}
+                        style={{ height: "400px" }}
                       />
                     </div>
                   </div>

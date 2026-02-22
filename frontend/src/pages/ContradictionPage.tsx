@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   PieChart,
   Pie,
@@ -15,6 +15,10 @@ import {
 import { useAnalysisStore } from "../stores/analysisStore";
 import { contradictionApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * 矛盾検出ページ
@@ -49,7 +53,7 @@ const SENSITIVITY_OPTIONS = [
 ];
 
 function ContradictionPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -59,6 +63,16 @@ function ContradictionPage() {
 
   // 結果
   const [contradictions, setContradictions] = useState<ContradictionItem[]>([]);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("contradiction");
+    if (cached?.hasResults) {
+      setContradictions(cached.data.contradictions ?? []);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   const handleRun = async () => {
     if (!activeDatasetId) return;
@@ -68,6 +82,7 @@ function ContradictionPage() {
     try {
       const response = await contradictionApi.run(activeDatasetId, {
         sensitivity,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -91,6 +106,7 @@ function ContradictionPage() {
 
       setContradictions(mapped);
       setHasResults(true);
+      setCachedResult("contradiction", { data: { contradictions: mapped }, hasResults: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "矛盾検出に失敗しました";
@@ -152,8 +168,9 @@ function ContradictionPage() {
               </h3>
 
               <div className="space-y-2">
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                   検出感度
+                  <InfoTooltip title="検出感度" text="矛盾検出の厳しさを制御します。「低」は明らかな事実の食い違い（数値の不一致、明確な反対意見など）のみを検出します。「中」は一般的な矛盾を広く検出します。「高」は暗黙的な矛盾や微妙なニュアンスの違いも検出しますが、誤検知（実際には矛盾でないもの）が増える可能性があります。" />
                 </label>
                 {SENSITIVITY_OPTIONS.map((opt) => (
                   <label
@@ -206,6 +223,12 @@ function ContradictionPage() {
                 )}
               </button>
             </div>
+
+            {/* 進捗タイムライン */}
+            <AnalysisProgress steps={ANALYSIS_STEPS.contradiction} isRunning={isRunning} />
+
+            {/* 属性フィルタ */}
+            <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
             {/* サマリー */}
             {hasResults && (

@@ -88,7 +88,10 @@ def register_exception_handlers(app: FastAPI) -> None:
                 "type": f"urn:nexustext:error:{ErrorCode.INTERNAL_ERROR.value.lower()}",
                 "title": "Internal Server Error",
                 "status": 500,
-                "detail": "An unexpected error occurred. Check logs with the correlation ID.",
+                "detail": (
+                    f"予期しないエラーが発生しました。"
+                    f"問題が続く場合は、エラーID「{cid[:8]}」を管理者にお伝えください。"
+                ),
                 "correlation_id": cid,
             },
             media_type="application/problem+json",

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   ScatterChart,
   Scatter,
@@ -22,6 +22,10 @@ import { useAnalysisStore } from "../stores/analysisStore";
 import type { ClusterAlgorithm } from "../stores/analysisStore";
 import { clusterApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
 
 /**
  * クラスタ分析ページ
@@ -90,13 +94,16 @@ interface ClusterInfo {
 /** 外れ値情報 */
 interface OutlierInfo {
   id: string;
+  index: number;
   x: number;
   y: number;
-  text?: string;
+  text: string;
+  clusterId: number;
+  distance: number;
 }
 
 function ClusterPage() {
-  const { clusterParams, setClusterParams, activeDatasetId } =
+  const { clusterParams, setClusterParams, activeDatasetId, setCachedResult, getCachedResult } =
     useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
@@ -108,6 +115,20 @@ function ClusterPage() {
   const [clusters, setClusters] = useState<ClusterInfo[]>([]);
   const [outlierList, setOutlierList] = useState<OutlierInfo[]>([]);
   const [silhouetteScore, setSilhouetteScore] = useState<number>(0);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("cluster");
+    if (cached?.hasResults) {
+      const d = cached.data;
+      setPoints(d.points ?? []);
+      setClusters(d.clusters ?? []);
+      setOutlierList(d.outlierList ?? []);
+      setSilhouetteScore(d.silhouetteScore ?? 0);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   // クラスタリング実行
   const handleRunClustering = async () => {
@@ -129,6 +150,7 @@ function ClusterPage() {
             ? clusterParams.minClusterSize
             : undefined,
         epsilon: clusterParams.epsilon,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -146,6 +168,16 @@ function ClusterPage() {
         text: pointTexts[i] || "",
       }));
       setPoints(mappedPoints);
+
+      // HDBSCANノイズ率が高い場合に警告
+      const noiseCount = mappedPoints.filter(p => p.isOutlier).length;
+      const noiseRatio = mappedPoints.length > 0 ? noiseCount / mappedPoints.length : 0;
+      if (noiseRatio > 0.5) {
+        setError(
+          `警告: データの${(noiseRatio * 100).toFixed(0)}%がノイズ点（灰色）に分類されました。` +
+          `「最小クラスタサイズ」パラメータを小さくして再実行してください。`
+        );
+      }
 
       // クラスタ情報マッピング
       const mappedClusters: ClusterInfo[] = (
@@ -168,18 +200,32 @@ function ClusterPage() {
       }));
       setClusters(mappedClusters);
 
-      // 外れ値リスト
-      const mappedOutliers: OutlierInfo[] = mappedPoints
-        .filter((p) => p.isOutlier)
-        .map((p) => ({
-          id: p.id,
-          x: p.x,
-          y: p.y,
-        }));
+      // 外れ値リスト（バックエンドのセントロイド距離ベース上位外れ値）
+      const rawOutliers = (data.outliers as Array<{
+        index: number;
+        text: string;
+        cluster_id: number;
+        distance: number;
+      }>) || [];
+      const umapCoords = data.umap_coordinates as number[][];
+      const mappedOutliers: OutlierInfo[] = rawOutliers.map((o) => ({
+        id: `outlier-${o.index}`,
+        index: o.index,
+        x: umapCoords[o.index]?.[0] ?? 0,
+        y: umapCoords[o.index]?.[1] ?? 0,
+        text: o.text,
+        clusterId: o.cluster_id,
+        distance: o.distance,
+      }));
       setOutlierList(mappedOutliers);
 
-      setSilhouetteScore(data.silhouette_score as number);
+      const score = data.silhouette_score as number;
+      setSilhouetteScore(score);
       setHasResults(true);
+      setCachedResult("cluster", {
+        data: { points: mappedPoints, clusters: mappedClusters, outlierList: mappedOutliers, silhouetteScore: score },
+        hasResults: true,
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "クラスタリング分析に失敗しました";
@@ -260,8 +306,18 @@ function ClusterPage() {
                     className="mt-0.5 accent-nexus-600"
                   />
                   <div>
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">
+                    <span className="text-sm font-medium text-gray-900 dark:text-white flex items-center">
                       {algo.label}
+                      <InfoTooltip
+                        title={algo.label}
+                        text={
+                          algo.value === "kmeans"
+                            ? "データを指定した数のグループに分割する最も標準的なクラスタリング手法です。各データ点を最も近いクラスタ中心に割り当て、中心を再計算する反復処理で分類します。大規模データでも高速に処理でき、結果が安定しています。クラスタ数を事前に決める必要があります。"
+                            : algo.value === "hdbscan"
+                              ? "データの密度の違いを自動的に検出し、密集した領域をクラスタとして抽出します。クラスタ数の事前指定が不要で、形状が不規則なクラスタも検出可能です。どのクラスタにも属さない外れ値（ノイズ点）も自動検出します。データ量が少ない場合はmin_cluster_sizeを小さく設定してください。"
+                              : "各データ点が複数のガウス分布の混合から生成されたと仮定し、確率的にクラスタを推定します。クラスタ間の境界が曖昧で重なりがある場合に有効です。各データ点の所属確率が得られるため、不確実性の評価にも利用できます。"
+                        }
+                      />
                     </span>
                     <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
                       {algo.description}
@@ -284,8 +340,9 @@ function ClusterPage() {
                 clusterParams.algorithm === "gmm") && (
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       クラスタ数
+                      <InfoTooltip title="クラスタ数（K値）" text="データを何グループに分割するかを指定します。少ない値（3-5）では大きなテーマが抽出され、多い値（10-20）ではより細かいサブテーマまで分類されます。最適な値はデータの多様性に依存します。シルエットスコアが高くなるKを探してみてください。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {clusterParams.nClusters}
@@ -314,8 +371,9 @@ function ClusterPage() {
               {clusterParams.algorithm === "hdbscan" && (
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       最小クラスタサイズ
+                      <InfoTooltip title="最小クラスタサイズ" text="1つのクラスタとして認識するために必要な最小データ数です。値を大きくすると大きな主要クラスタのみ検出され、小さくすると少数派の意見グループも独立クラスタとして検出されます。データ数の1/10〜1/20が目安です。全てノイズ（灰色）になる場合は値を小さくしてください。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {clusterParams.minClusterSize}
@@ -345,6 +403,7 @@ function ClusterPage() {
                 <div className="flex justify-between text-sm mb-1">
                   <span className="text-gray-600 dark:text-gray-400">
                     Epsilon (距離閾値)
+                    <InfoTooltip title="Epsilon（ε）" text="近傍とみなす距離の閾値です。値を大きくすると遠いデータ点同士も同じクラスタと判定され、クラスタが統合されやすくなります。小さくするとクラスタが分裂しやすくなります。HDBSCANでは補助的に使用されます。" width="md" />
                   </span>
                   <span className="font-medium text-gray-900 dark:text-white">
                     {clusterParams.epsilon.toFixed(2)}
@@ -405,6 +464,16 @@ function ClusterPage() {
             </div>
           </div>
 
+          {/* 進捗タイムライン */}
+          <AnalysisProgress steps={ANALYSIS_STEPS.cluster} isRunning={isRunning} />
+
+          {/* 属性フィルタ */}
+          <AttributeFilter
+            datasetId={activeDatasetId}
+            filters={attrFilters}
+            onChange={setAttrFilters}
+          />
+
           {/* シルエットスコア */}
           {hasResults && (
             <div className="card p-4">
@@ -412,8 +481,9 @@ function ClusterPage() {
                 分析品質
               </h3>
               <div className="flex items-center gap-2">
-                <span className="text-xs text-gray-500 dark:text-gray-400">
+                <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                   シルエットスコア
+                  <InfoTooltip title="シルエットスコア" text="クラスタリングの品質を-1.0〜1.0で評価する指標です。0.5以上: 良好な分離（クラスタ間の境界が明確）。0.25〜0.5: やや重なりあり（パラメータ調整で改善の余地あり）。0.25未満: クラスタ同士が大きく重なっている（クラスタ数やアルゴリズムの見直しを推奨）。値が高いほどクラスタ内のデータが密集し、クラスタ間が離れていることを意味します。" />
                 </span>
                 <div className="flex-1 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                   <div
@@ -438,8 +508,9 @@ function ClusterPage() {
           {/* UMAP散布図 */}
           <div className="card p-6">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center">
                 UMAP クラスタ散布図
+                <InfoTooltip title="UMAP散布図" text="高次元のテキストデータを2次元に圧縮（次元削減）して可視化したものです。近くに配置されたドットは内容が類似したテキストを表します。同じ色のドットは同じクラスタに属しています。灰色のドットはどのクラスタにも明確に属さない外れ値（ノイズ点）です。UMAP-1/UMAP-2の軸は数学的に導出された座標で、直接的な意味はありません。" />
               </h3>
               {selectedCluster !== null && (
                 <button
@@ -452,7 +523,7 @@ function ClusterPage() {
             </div>
 
             {hasResults ? (
-              <ResponsiveContainer width="100%" height={420}>
+              <ResponsiveContainer width="100%" height={500}>
                 <ScatterChart
                   margin={{ top: 10, right: 10, bottom: 10, left: 10 }}
                 >
@@ -542,7 +613,7 @@ function ClusterPage() {
 
           {/* クラスタラベル一覧 */}
           {hasResults && (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               {clusters.map((cluster) => (
                 <button
                   key={cluster.id}
@@ -602,10 +673,10 @@ function ClusterPage() {
                   {cluster.centroidTexts.length > 0 && (
                     <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-700 space-y-1">
                       <p className="text-xs text-gray-400 dark:text-gray-500 font-medium">代表テキスト:</p>
-                      {cluster.centroidTexts.slice(0, 3).map((t, i) => (
+                      {cluster.centroidTexts.slice(0, 5).map((t, i) => (
                         <p
                           key={i}
-                          className="text-xs text-gray-500 dark:text-gray-400 truncate"
+                          className="text-xs text-gray-500 dark:text-gray-400 line-clamp-2"
                           title={t}
                         >
                           {t}
@@ -616,6 +687,10 @@ function ClusterPage() {
 
                   {/* コヒーレンススコア */}
                   <div className="flex items-center gap-2 mt-2">
+                    <span className="text-xs text-gray-400 flex items-center flex-shrink-0">
+                      品質
+                      <InfoTooltip title="コヒーレンススコア" text="クラスタ内のテキストがどれだけ一貫したテーマを持っているかを示す指標です。シルエットスコアと同じ値が使われ、-1.0〜1.0の範囲です。値が高いほどクラスタ内のテキストが類似しており、明確なテーマを持つことを意味します。" />
+                    </span>
                     <div className="flex-1 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                       <div
                         className="h-full rounded-full bg-nexus-500"
@@ -638,22 +713,41 @@ function ClusterPage() {
             <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
                 <AlertTriangle size={16} className="text-amber-500" />
-                外れ値一覧（{outlierList.length}件）
+                外れ値一覧（セントロイド距離 上位{outlierList.length}件）
+                <InfoTooltip title="セントロイド距離と外れ値" text="セントロイド距離は、各テキストがそのクラスタの中心（セントロイド）からどれだけ離れているかを数値化したものです。距離が大きいほどクラスタの典型的なテキストとは異なる内容を持つことを意味します。ここに表示されるのは各クラスタで最もセントロイドから離れた「外れ値」テキストで、独自の視点、ユニークな意見、または分類が難しい境界的なテキストです。少数意見や重要な例外の発見に役立ちます。" />
               </h3>
-              <div className="space-y-2 max-h-48 overflow-y-auto">
-                {outlierList.map((outlier) => (
-                  <div
-                    key={outlier.id}
-                    className="flex items-center gap-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm"
-                  >
-                    <span className="text-gray-400 dark:text-gray-500 font-mono text-xs flex-shrink-0">
-                      {outlier.id}
-                    </span>
-                    <span className="text-xs text-gray-400 flex-shrink-0">
-                      ({outlier.x.toFixed(1)}, {outlier.y.toFixed(1)})
-                    </span>
-                  </div>
-                ))}
+              <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+                各クラスターの中心から最も離れたテキスト。独自の視点や重要な少数意見を含む可能性があります。
+              </p>
+              <div className="space-y-2 max-h-80 overflow-y-auto">
+                {outlierList.map((outlier) => {
+                  const cluster = clusters.find((c) => c.id === outlier.clusterId);
+                  return (
+                    <div
+                      key={outlier.id}
+                      className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50"
+                    >
+                      <div className="flex items-center gap-2 mb-1.5">
+                        <div
+                          className="w-2 h-2 rounded-full flex-shrink-0"
+                          style={{
+                            backgroundColor:
+                              CLUSTER_COLORS[outlier.clusterId % CLUSTER_COLORS.length],
+                          }}
+                        />
+                        <span className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {cluster?.label ?? `クラスタ ${outlier.clusterId}`}
+                        </span>
+                        <span className="ml-auto text-xs text-gray-400 font-mono">
+                          距離: {outlier.distance.toFixed(3)}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600 dark:text-gray-400 leading-relaxed line-clamp-3">
+                        {outlier.text}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

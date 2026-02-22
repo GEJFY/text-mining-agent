@@ -72,8 +72,7 @@ class AzureAIFoundryProvider(BaseLLMProvider):
             response = await client.chat.completions.create(
                 model=model_id,
                 messages=messages,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
+                max_completion_tokens=request.max_tokens,
             )
 
             latency_ms = (time.monotonic() - start_time) * 1000
@@ -104,7 +103,7 @@ class AzureAIFoundryProvider(BaseLLMProvider):
             response = await client.chat.completions.create(
                 model="gpt-5-nano",
                 messages=[{"role": "user", "content": "ping"}],
-                max_tokens=1,
+                max_completion_tokens=1,
             )
             return response.choices[0].message.content is not None
         except Exception as e:

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BarChart,
   Bar,
@@ -20,6 +20,10 @@ import {
 import { useAnalysisStore } from "../stores/analysisStore";
 import { taxonomyApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * タクソノミー生成ページ
@@ -114,7 +118,7 @@ function TreeNode({
 }
 
 function TaxonomyPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -126,6 +130,17 @@ function TaxonomyPage() {
   // 結果
   const [rootCategories, setRootCategories] = useState<TaxonomyNode[]>([]);
   const [uncategorizedCount, setUncategorizedCount] = useState(0);
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("taxonomy");
+    if (cached?.hasResults) {
+      setRootCategories(cached.data.rootCategories ?? []);
+      setUncategorizedCount(cached.data.uncategorizedCount ?? 0);
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   const handleRun = async () => {
     if (!activeDatasetId) return;
@@ -136,6 +151,7 @@ function TaxonomyPage() {
       const response = await taxonomyApi.run(activeDatasetId, {
         max_depth: maxDepth,
         max_categories: maxCategories,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
@@ -154,9 +170,11 @@ function TaxonomyPage() {
         data.root_categories as Array<Record<string, unknown>>
       ).map(mapNode);
 
+      const uncatCount = (data.uncategorized_count as number) ?? 0;
       setRootCategories(mapped);
-      setUncategorizedCount((data.uncategorized_count as number) ?? 0);
+      setUncategorizedCount(uncatCount);
       setHasResults(true);
+      setCachedResult("taxonomy", { data: { rootCategories: mapped, uncategorizedCount: uncatCount }, hasResults: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "タクソノミー生成に失敗しました";
@@ -213,8 +231,9 @@ function TaxonomyPage() {
                 {/* 最大深度 */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       最大深度
+                      <InfoTooltip title="階層の最大深度" text="カテゴリ階層のネスト数の上限です。深度1はフラットな分類、深度2-3で大分類→中分類→小分類のような階層構造になります。データ量が多い場合は深く設定しても意味のある階層が得られますが、少ない場合は2-3が推奨です。深すぎると末端カテゴリのテキスト数が0になりがちです。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {maxDepth}
@@ -237,8 +256,9 @@ function TaxonomyPage() {
                 {/* 最大カテゴリ数 */}
                 <div>
                   <div className="flex justify-between text-sm mb-1">
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-gray-600 dark:text-gray-400 flex items-center">
                       最大カテゴリ数
+                      <InfoTooltip title="トップレベルカテゴリ数" text="最上位階層に生成するカテゴリの最大数です。少ない値（3-5）では大きなテーマでまとめられ、多い値（10-15）ではより細かいテーマに分かれます。データの多様性に応じて調整してください。LLMが最適と判断した場合、指定数より少ないカテゴリが生成されることがあります。" />
                     </span>
                     <span className="font-medium text-gray-900 dark:text-white">
                       {maxCategories}
@@ -278,6 +298,12 @@ function TaxonomyPage() {
                 )}
               </button>
             </div>
+
+            {/* 進捗タイムライン */}
+            <AnalysisProgress steps={ANALYSIS_STEPS.taxonomy} isRunning={isRunning} />
+
+            {/* 属性フィルタ */}
+            <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
             {/* サマリー */}
             {hasResults && (

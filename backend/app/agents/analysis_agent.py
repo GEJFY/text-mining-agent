@@ -90,17 +90,39 @@ class AnalysisAgent:
         self.logs.append(entry)
         logger.info("agent_log", phase=phase, thought=thought[:100])
 
+    async def _save_intermediate(self, dataset_id: str, objective: str) -> None:
+        """Redisに中間状態を保存（フロントエンドのポーリング用）"""
+        try:
+            from app.agents.agent_store import agent_store
+
+            await agent_store.save(
+                self.agent_id,
+                {
+                    "state": self.state.value,
+                    "dataset_id": dataset_id,
+                    "objective": objective,
+                    "insights": [i.model_dump() for i in self.insights],
+                    "pending_approval": self.pending_approval,
+                    "logs": [log.model_dump() for log in self.logs],
+                },
+            )
+        except Exception as e:
+            logger.warning("intermediate_save_failed", error=str(e))
+
     async def run(self, context: AgentContext) -> list[AgentInsight]:
         """推論・実行ループのメインエントリポイント"""
         self.state = AgentState.RUNNING
         logger.info("agent_start", agent_id=self.agent_id, objective=context.objective)
+        await self._save_intermediate(context.dataset_id, context.objective)
 
         try:
             # Phase 1: 観測
             observations = await self._observe(context)
+            await self._save_intermediate(context.dataset_id, context.objective)
 
             # Phase 2: 仮説生成
             hypotheses = await self._hypothesize(context, observations)
+            await self._save_intermediate(context.dataset_id, context.objective)
 
             # HITL: Semi-Auto/Guidedの場合、仮説承認を待つ
             if self.hitl_mode in (HITLMode.SEMI_AUTO, HITLMode.GUIDED):
@@ -110,6 +132,7 @@ class AnalysisAgent:
                     "hypotheses": hypotheses,
                     "message": "以下の仮説を検証してよろしいですか？",
                 }
+                await self._save_intermediate(context.dataset_id, context.objective)
                 return []  # 承認後にresumeで継続
 
             # Phase 3-5: 探索→検証→統合
@@ -118,6 +141,7 @@ class AnalysisAgent:
         except Exception as e:
             self.state = AgentState.ERROR
             logger.error("agent_error", error=str(e))
+            await self._save_intermediate(context.dataset_id, context.objective)
             raise
 
     async def resume_after_approval(self, context: AgentContext, approved_hypotheses: list[str]) -> list[AgentInsight]:
@@ -190,12 +214,16 @@ JSON配列: ["仮説1", "仮説2", "仮説3"]"""
 
         # Phase 3: ツール選択と実行
         exploration_results = await self._explore_with_tools(context, hypotheses)
+        await self._save_intermediate(context.dataset_id, context.objective)
 
         # Phase 4: 検証
         verification_results = await self._verify(context, hypotheses, exploration_results)
+        await self._save_intermediate(context.dataset_id, context.objective)
 
         # Phase 5: 統合
-        return await self._synthesize(context, hypotheses, verification_results)
+        insights = await self._synthesize(context, hypotheses, verification_results)
+        await self._save_intermediate(context.dataset_id, context.objective)
+        return insights
 
     async def _explore_with_tools(self, context: AgentContext, hypotheses: list[str]) -> list[dict]:
         """Phase 3: ツール選択→実行（Tool Use パターン）"""
@@ -286,6 +314,7 @@ JSON配列: ["仮説1", "仮説2", "仮説3"]"""
                 result=result.summary if result.success else f"エラー: {result.error}",
                 confidence=0.8 if result.success else 0.2,
             )
+            await self._save_intermediate(context.dataset_id, context.objective)
 
         return exploration_results
 

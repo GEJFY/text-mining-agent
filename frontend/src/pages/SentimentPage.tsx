@@ -1,7 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  LineChart,
-  Line,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -23,6 +21,10 @@ import {
 import { useAnalysisStore } from "../stores/analysisStore";
 import { sentimentApi } from "../api/client";
 import DatasetGuard from "../components/DatasetGuard";
+import InfoTooltip from "../components/InfoTooltip";
+import AnalysisProgress, { ANALYSIS_STEPS } from "../components/AnalysisProgress";
+import AttributeFilter from "../components/AttributeFilter";
+import type { Filters } from "../components/AttributeFilter";
 
 /**
  * センチメント分析ページ
@@ -44,12 +46,11 @@ interface DistributionItem {
   color: string;
 }
 
-/** 時系列データ */
+/** 時系列データ（バックエンドフォーマット準拠） */
 interface TimeSeriesItem {
-  date: string;
-  label: string;
-  avgScore: number;
+  period: string;
   count: number;
+  distribution: Record<string, number>;
 }
 
 /** 結果テーブル行 */
@@ -59,17 +60,35 @@ interface ResultRow {
   scores: Record<string, number>;
 }
 
-// 分布ラベル → カラーマッピング
+// 分布ラベル → カラーマッピング（日本語・英語両対応）
 const DISTRIBUTION_COLORS: Record<string, string> = {
   positive: "#34d399",
   negative: "#f87171",
   neutral: "#9ca3af",
   very_positive: "#059669",
   very_negative: "#dc2626",
+  "ポジティブ": "#34d399",
+  "ネガティブ": "#f87171",
+  "中立": "#9ca3af",
+  "満足": "#059669",
+  "不満": "#dc2626",
+  error: "#6b7280",
 };
 
+// ラベルの感情分類
+const POSITIVE_LABELS = new Set(["positive", "Positive", "ポジティブ", "満足", "好意的", "very_positive"]);
+const NEGATIVE_LABELS = new Set(["negative", "Negative", "ネガティブ", "不満", "批判的", "very_negative", "error"]);
+
+const getLabelBadgeClass = (label: string) =>
+  POSITIVE_LABELS.has(label) ? "badge-positive"
+  : NEGATIVE_LABELS.has(label) ? "badge-negative"
+  : "badge-neutral";
+
+// 時系列チャート用カラー
+const TS_COLORS = ["#34d399", "#f87171", "#9ca3af", "#6366f1", "#f59e0b", "#ec4899"];
+
 function SentimentPage() {
-  const { activeDatasetId } = useAnalysisStore();
+  const { activeDatasetId, setCachedResult, getCachedResult } = useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
   const [positiveLabel, setPositiveLabel] = useState("ポジティブ");
@@ -89,6 +108,22 @@ function SentimentPage() {
   const [timeSeries, setTimeSeries] = useState<TimeSeriesItem[]>([]);
   const [resultRows, setResultRows] = useState<ResultRow[]>([]);
   const [axes, setAxes] = useState<string[]>([]);
+  const [textPreviews, setTextPreviews] = useState<Record<string, string>>({});
+  const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // キャッシュ復元
+  useEffect(() => {
+    const cached = getCachedResult("sentiment");
+    if (cached?.hasResults) {
+      const d = cached.data;
+      setDistribution(d.distribution ?? []);
+      setTimeSeries(d.timeSeries ?? []);
+      setResultRows(d.resultRows ?? []);
+      setAxes(d.axes ?? []);
+      setTextPreviews(d.textPreviews ?? {});
+      setHasResults(true);
+    }
+  }, [getCachedResult]);
 
   // カスタム軸を追加
   const addCustomAxis = () => {
@@ -165,12 +200,10 @@ function SentimentPage() {
       const response = await sentimentApi.run(activeDatasetId, {
         mode: customAxesApi ? "custom" : "basic",
         custom_axes: customAxesApi,
+        filters: Object.keys(attrFilters).length > 0 ? attrFilters : undefined,
       });
 
       const data = response.data;
-
-      // 軸情報
-      setAxes(data.axes as string[]);
 
       // 分布マッピング
       const dist = data.distribution as Record<string, number>;
@@ -183,20 +216,24 @@ function SentimentPage() {
       );
       setDistribution(mappedDist);
 
-      // 時系列データ
-      if (data.time_series) {
-        const ts = (data.time_series as Array<Record<string, unknown>>).map(
-          (item) => ({
-            date: item.date as string,
-            label: (item.label as string) ?? (item.date as string),
-            avgScore: (item.avg_score as number) ?? 0,
-            count: (item.count as number) ?? 0,
-          }),
-        );
-        setTimeSeries(ts);
-      } else {
-        setTimeSeries([]);
+      // 時系列データ（バックエンドフォーマット: {period, count, distribution}）
+      let mappedTs: TimeSeriesItem[] = [];
+      if (data.time_series && Array.isArray(data.time_series) && (data.time_series as unknown[]).length > 0) {
+        mappedTs = (data.time_series as Array<{
+          period: string;
+          count: number;
+          distribution: Record<string, number>;
+        }>).map((item) => ({
+          period: item.period,
+          count: item.count,
+          distribution: item.distribution ?? {},
+        }));
       }
+      setTimeSeries(mappedTs);
+
+      // テキストプレビュー
+      const mappedPreviews = (data.text_previews as Record<string, string>) ?? {};
+      setTextPreviews(mappedPreviews);
 
       // 結果テーブル（最大20件）
       const results = (
@@ -206,15 +243,20 @@ function SentimentPage() {
           scores: Record<string, number>;
         }>
       ).slice(0, 20);
-      setResultRows(
-        results.map((r) => ({
-          id: r.record_id,
-          labels: r.labels,
-          scores: r.scores,
-        })),
-      );
+      const mappedRows = results.map((r) => ({
+        id: r.record_id,
+        labels: r.labels,
+        scores: r.scores,
+      }));
+      setResultRows(mappedRows);
 
+      const mappedAxes = data.axes as string[];
+      setAxes(mappedAxes);
       setHasResults(true);
+      setCachedResult("sentiment", {
+        data: { distribution: mappedDist, timeSeries: mappedTs, resultRows: mappedRows, axes: mappedAxes, textPreviews: mappedPreviews },
+        hasResults: true,
+      });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "センチメント分析に失敗しました";
@@ -265,8 +307,9 @@ function SentimentPage() {
             {/* デフォルト軸 */}
             <div className="space-y-3">
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                   ポジティブ側ラベル
+                  <InfoTooltip title="ポジティブラベル" text="LLMがポジティブと判定した際に付与するラベル名です。デフォルトは「ポジティブ」ですが、業界に合わせて「満足」「好意的」「推奨」など目的に応じた表現に変更できます。分布チャートやテーブルにこのラベルが表示されます。" />
                 </label>
                 <input
                   type="text"
@@ -277,8 +320,9 @@ function SentimentPage() {
                 />
               </div>
               <div>
-                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 block">
+                <label className="text-xs text-gray-500 dark:text-gray-400 mb-1 flex items-center">
                   ネガティブ側ラベル
+                  <InfoTooltip title="ネガティブラベル" text="LLMがネガティブと判定した際に付与するラベル名です。デフォルトは「ネガティブ」ですが、「不満」「批判的」「リスク」など分析目的に応じた表現に変更できます。カスタム軸を追加すると、複数の感情次元で同時に評価できます。" />
                 </label>
                 <input
                   type="text"
@@ -447,6 +491,12 @@ function SentimentPage() {
               )}
             </button>
           </div>
+
+          {/* 進捗タイムライン */}
+          <AnalysisProgress steps={ANALYSIS_STEPS.sentiment} isRunning={isRunning} />
+
+          {/* 属性フィルタ */}
+          <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
         </div>
 
         {/* ========================================
@@ -455,27 +505,25 @@ function SentimentPage() {
         <div className="lg:col-span-2 space-y-4">
           {hasResults ? (
             <>
-              {/* 時系列チャート */}
+              {/* 時系列チャート（積み上げバー） */}
               {timeSeries.length > 0 && (
                 <div className="card p-6">
                   <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
-                    センチメントスコア推移
+                    感情ラベル推移（月別）
                   </h3>
                   <ResponsiveContainer width="100%" height={320}>
-                    <LineChart data={timeSeries}>
+                    <BarChart data={timeSeries.map(ts => ({ ...ts, ...ts.distribution }))}>
                       <CartesianGrid
                         strokeDasharray="3 3"
                         stroke="#e5e7eb"
                         className="dark:stroke-gray-700"
                       />
                       <XAxis
-                        dataKey="label"
+                        dataKey="period"
                         tick={{ fill: "#9ca3af", fontSize: 12 }}
                       />
                       <YAxis
-                        domain={[-1, 1]}
                         tick={{ fill: "#9ca3af", fontSize: 12 }}
-                        tickFormatter={(v: number) => v.toFixed(1)}
                       />
                       <Tooltip
                         contentStyle={{
@@ -484,30 +532,17 @@ function SentimentPage() {
                           borderRadius: "8px",
                           color: "#f3f4f6",
                         }}
-                        formatter={(value: number) => [
-                          value.toFixed(2),
-                          "スコア",
-                        ]}
                       />
-                      {/* ゼロライン */}
-                      <Line
-                        type="monotone"
-                        dataKey={() => 0}
-                        stroke="#6b7280"
-                        strokeDasharray="5 5"
-                        strokeWidth={1}
-                        dot={false}
-                      />
-                      {/* センチメントライン */}
-                      <Line
-                        type="monotone"
-                        dataKey="avgScore"
-                        stroke="#6366f1"
-                        strokeWidth={2.5}
-                        dot={{ r: 4, fill: "#6366f1" }}
-                        name="平均スコア"
-                      />
-                    </LineChart>
+                      {axes.map((axis, i) => (
+                        <Bar
+                          key={axis}
+                          dataKey={axis}
+                          stackId="a"
+                          fill={DISTRIBUTION_COLORS[axis] ?? TS_COLORS[i % TS_COLORS.length]}
+                          name={axis}
+                        />
+                      ))}
+                    </BarChart>
                   </ResponsiveContainer>
                 </div>
               )}
@@ -574,12 +609,12 @@ function SentimentPage() {
                     <thead>
                       <tr className="bg-gray-50 dark:bg-gray-800/50">
                         <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                          レコードID
+                          テキスト
                         </th>
                         <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
                           ラベル
                         </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-40">
+                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
                           スコア
                         </th>
                       </tr>
@@ -589,42 +624,30 @@ function SentimentPage() {
                         const primaryLabel = row.labels[0] ?? "-";
                         const primaryScore =
                           Object.values(row.scores)[0] ?? 0;
+                        const preview = textPreviews[row.id] ?? row.id.slice(0, 12) + "…";
                         return (
                           <tr
                             key={row.id}
                             className="hover:bg-gray-50 dark:hover:bg-gray-800/30"
                           >
-                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 font-mono">
-                              {row.id}
+                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-xs">
+                              <span className="line-clamp-2" title={preview}>{preview}</span>
                             </td>
                             <td className="px-4 py-3 text-center">
-                              <span
-                                className={
-                                  primaryLabel === "positive"
-                                    ? "badge-positive"
-                                    : primaryLabel === "negative"
-                                      ? "badge-negative"
-                                      : "badge-neutral"
-                                }
-                              >
-                                {primaryLabel === "positive"
-                                  ? positiveLabel
-                                  : primaryLabel === "negative"
-                                    ? negativeLabel
-                                    : primaryLabel}
+                              <span className={getLabelBadgeClass(primaryLabel)}>
+                                {primaryLabel}
                               </span>
                             </td>
                             <td className="px-4 py-3 text-center">
                               <span
                                 className={`text-sm font-mono font-medium ${
-                                  primaryScore > 0
+                                  primaryScore > 0.5
                                     ? "text-emerald-600 dark:text-emerald-400"
-                                    : primaryScore < 0
+                                    : primaryScore < 0.3
                                       ? "text-red-600 dark:text-red-400"
                                       : "text-gray-600 dark:text-gray-400"
                                 }`}
                               >
-                                {primaryScore > 0 ? "+" : ""}
                                 {primaryScore.toFixed(2)}
                               </span>
                             </td>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useAnalysisStore } from "../../stores/analysisStore";
 import { datasetsApi } from "../../api/client";
@@ -14,6 +14,7 @@ import {
   Sun,
   ChevronLeft,
   ChevronRight,
+  Palette,
   ChevronDown,
   Sparkles,
   Menu,
@@ -121,6 +122,8 @@ function AppLayout() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
 
   // グループ展開状態（localStorageで永続化）
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>(() => {
@@ -165,6 +168,17 @@ function AppLayout() {
       }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // 設定ドロップダウン外クリックで閉じる
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    if (settingsOpen) document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [settingsOpen]);
 
   const handleLogout = () => {
     logout();
@@ -296,52 +310,6 @@ function AppLayout() {
 
         {/* サイドバー下部 */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-2">
-          {/* カラーパレット切替（6テーマ） */}
-          {!sidebarCollapsed && (
-            <div className="px-3 py-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">テーマ:</span>
-              <div className="grid grid-cols-6 gap-1.5">
-                {[
-                  { id: "pwc", color: "#D04A02", label: "Orange" },
-                  { id: "indigo", color: "#6366f1", label: "Indigo" },
-                  { id: "teal", color: "#14b8a6", label: "Teal" },
-                  { id: "emerald", color: "#10b981", label: "Emerald" },
-                  { id: "slate", color: "#64748b", label: "Slate" },
-                  { id: "purple", color: "#a855f7", label: "Purple" },
-                ].map((p) => (
-                  <button
-                    key={p.id}
-                    onClick={() => {
-                      if (p.id === "pwc") {
-                        document.documentElement.removeAttribute("data-palette");
-                      } else {
-                        document.documentElement.setAttribute("data-palette", p.id);
-                      }
-                      localStorage.setItem("nexustext-palette", p.id);
-                    }}
-                    className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
-                    style={{ backgroundColor: p.color }}
-                    title={p.label}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ダークモード切替 */}
-          <button
-            onClick={toggleDarkMode}
-            className="btn-ghost w-full justify-start gap-3"
-            title={darkMode ? "ライトモードに切替" : "ダークモードに切替"}
-          >
-            {darkMode ? <Sun size={20} /> : <Moon size={20} />}
-            {!sidebarCollapsed && (
-              <span className="text-sm">
-                {darkMode ? "ライトモード" : "ダークモード"}
-              </span>
-            )}
-          </button>
-
           {/* 折りたたみボタン */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
@@ -398,6 +366,60 @@ function AppLayout() {
 
           {/* ヘッダー右側 */}
           <div className="ml-auto flex items-center gap-3">
+            {/* テーマ/ダークモード設定 */}
+            <div className="relative" ref={settingsRef}>
+              <button
+                onClick={() => setSettingsOpen(!settingsOpen)}
+                className="btn-ghost"
+                title="テーマ設定"
+              >
+                <Palette size={18} />
+              </button>
+              {settingsOpen && (
+                <div className="absolute right-0 top-full mt-2 w-56 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 p-4 space-y-4">
+                  {/* ダークモード切替 */}
+                  <div>
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">モード</span>
+                    <button
+                      onClick={toggleDarkMode}
+                      className="mt-1.5 flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+                    >
+                      {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+                      {darkMode ? "ライトモード" : "ダークモード"}
+                    </button>
+                  </div>
+                  {/* カラーパレット */}
+                  <div>
+                    <span className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">テーマカラー</span>
+                    <div className="grid grid-cols-6 gap-2 mt-1.5">
+                      {[
+                        { id: "pwc", color: "#D04A02", label: "Orange" },
+                        { id: "indigo", color: "#6366f1", label: "Indigo" },
+                        { id: "teal", color: "#14b8a6", label: "Teal" },
+                        { id: "emerald", color: "#10b981", label: "Emerald" },
+                        { id: "slate", color: "#64748b", label: "Slate" },
+                        { id: "purple", color: "#a855f7", label: "Purple" },
+                      ].map((p) => (
+                        <button
+                          key={p.id}
+                          onClick={() => {
+                            if (p.id === "pwc") {
+                              document.documentElement.removeAttribute("data-palette");
+                            } else {
+                              document.documentElement.setAttribute("data-palette", p.id);
+                            }
+                            localStorage.setItem("nexustext-palette", p.id);
+                          }}
+                          className="w-7 h-7 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
+                          style={{ backgroundColor: p.color }}
+                          title={p.label}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
             <a
               href={`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8002"}/docs`}
               target="_blank"

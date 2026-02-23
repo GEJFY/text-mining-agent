@@ -117,26 +117,29 @@ JSON配列で出力:
 
         texts_block = "\n".join(f"[{i}] {text[:200]}" for i, text in enumerate(classify_texts))
 
-        pass2_prompt = f"""以下のテキストを指定カテゴリに分類し、各カテゴリのサブカテゴリを発見してください。
+        pass2_prompt = f"""以下の{len(classify_texts)}件のテキスト（インデックス0〜{len(classify_texts)-1}）を
+指定カテゴリに分類し、各カテゴリのサブカテゴリを発見してください。
 
 カテゴリ: {json.dumps(category_names, ensure_ascii=False)}
 
 テキストデータ:
 {texts_block}
 
-要件:
-- 各テキストを最も適切なカテゴリに分類
+重要な要件:
+- 全{len(classify_texts)}件のテキストをいずれかのカテゴリに分類すること
+- text_indicesには該当テキストのインデックス番号（[0]〜[{len(classify_texts)-1}]）を必ず含めること
+- text_countはtext_indicesの要素数と一致させること
 - 各カテゴリ内で共通パターンからサブカテゴリを発見（最大{max_depth - 1}階層）
-- 各ノードにテキスト件数を記載
+- 分類できないテキストのみuncategorized_countに計上
 
-JSON形式で出力:
+JSON形式で出力（この形式に厳密に従うこと）:
 {{
     "root_categories": [
         {{
             "name": "カテゴリ名",
             "description": "説明",
             "text_count": 15,
-            "text_indices": [0, 3, 7],
+            "text_indices": [0, 3, 7, 10, 12],
             "children": [
                 {{
                     "name": "サブカテゴリ名",
@@ -148,7 +151,7 @@ JSON形式で出力:
             ]
         }}
     ],
-    "uncategorized_count": 2
+    "uncategorized_count": 0
 }}"""
 
         try:
@@ -167,6 +170,27 @@ JSON形式で出力:
             }
 
         root_cats = taxonomy.get("root_categories", [])
+
+        # text_indicesからtext_countを再計算（LLMが不整合な値を返す場合の補正）
+        def fix_counts(node: dict) -> None:
+            indices = node.get("text_indices", [])
+            if isinstance(indices, list):
+                node["text_count"] = len(indices)
+            elif node.get("text_count", 0) == 0 and not indices:
+                node["text_count"] = 0
+            for child in node.get("children", []):
+                fix_counts(child)
+
+        all_assigned: set[int] = set()
+        for cat in root_cats:
+            fix_counts(cat)
+            for idx in cat.get("text_indices", []):
+                if isinstance(idx, int):
+                    all_assigned.add(idx)
+
+        # uncategorized_countをtext_indicesに基づいて再計算
+        total_texts = len(classify_texts)
+        taxonomy["uncategorized_count"] = total_texts - len(all_assigned)
 
         # key_findings
         key_findings = []

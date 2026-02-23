@@ -9,6 +9,7 @@ import {
   Plus,
   RotateCcw,
   Upload,
+  ChevronDown,
 } from "lucide-react";
 import * as d3 from "d3";
 import { useAnalysisStore } from "../stores/analysisStore";
@@ -104,6 +105,7 @@ function CooccurrencePage() {
   const [activeTab, setActiveTab] = useState<"ja" | "en" | "custom">("ja");
   const [newStopword, setNewStopword] = useState("");
   const [stopwordsLoaded, setStopwordsLoaded] = useState(false);
+  const [stopwordsExpanded, setStopwordsExpanded] = useState(false);
   const [attrFilters, setAttrFilters] = useState<Filters>({});
 
   // キャッシュ復元
@@ -166,7 +168,9 @@ function CooccurrencePage() {
 
     const maxWeight = Math.max(...simEdges.map((e) => e.weight), 1);
 
-    // Force simulation
+    // Force simulation（密集レイアウト）
+    const nodeCount = simNodes.length;
+    const chargeStrength = nodeCount > 30 ? -60 : nodeCount > 15 ? -80 : -100;
     const simulation = d3
       .forceSimulation<GraphNode>(simNodes)
       .force(
@@ -174,15 +178,15 @@ function CooccurrencePage() {
         d3
           .forceLink<GraphNode, GraphEdge>(simEdges as GraphEdge[])
           .id((d) => d.id)
-          .distance((d) => 80 - (d.weight / maxWeight) * 40),
+          .distance((d) => 40 + (1 - d.weight / maxWeight) * 30),
       )
-      .force("charge", d3.forceManyBody().strength(-120))
+      .force("charge", d3.forceManyBody().strength(chargeStrength))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("x", d3.forceX(width / 2).strength(0.08))
-      .force("y", d3.forceY(height / 2).strength(0.08))
+      .force("x", d3.forceX(width / 2).strength(0.12))
+      .force("y", d3.forceY(height / 2).strength(0.12))
       .force(
         "collision",
-        d3.forceCollide<GraphNode>().radius((d) => d.r + 4),
+        d3.forceCollide<GraphNode>().radius((d) => d.r + 2),
       );
 
     // エッジ描画
@@ -613,7 +617,18 @@ function CooccurrencePage() {
           hasResults: true,
         });
       } catch {
-        // コミュニティ命名に失敗してもデフォルト名で継続
+        // LLM命名失敗時: 上位単語からフォールバック名を生成
+        const fallbackCommunities = mappedCommunities.map((c) => ({
+          ...c,
+          name: c.words.length > 0
+            ? c.words.slice(0, 3).map((w) => w.word).join("・")
+            : c.name,
+        }));
+        setCommunities(fallbackCommunities);
+        setCachedResult("cooccurrence", {
+          data: { nodes: mappedNodes, edges: mappedEdges, communities: fallbackCommunities, wordCloud: mappedWordCloud, modularity: data.modularity as number },
+          hasResults: true,
+        });
       }
     } catch (err) {
       const message =
@@ -659,7 +674,7 @@ function CooccurrencePage() {
           {/* ========================================
               左パネル: パラメータ・ストップワード・コミュニティ
               ======================================== */}
-          <div className="lg:col-span-1 space-y-4">
+          <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
             {/* パラメータ設定 */}
             <div className="card p-4">
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -734,15 +749,23 @@ function CooccurrencePage() {
             {/* 属性フィルタ */}
             <AttributeFilter datasetId={activeDatasetId} filters={attrFilters} onChange={setAttrFilters} />
 
-            {/* ストップワード管理 */}
+            {/* ストップワード管理（折りたたみ） */}
             {stopwordsLoaded && (
               <div className="card p-4">
-                <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
-                  ストップワード管理
-                </h3>
+                <button
+                  onClick={() => setStopwordsExpanded(!stopwordsExpanded)}
+                  className="w-full flex items-center justify-between text-sm font-semibold text-gray-900 dark:text-white"
+                >
+                  <span>ストップワード管理</span>
+                  <ChevronDown
+                    size={16}
+                    className={`text-gray-400 transition-transform duration-200 ${stopwordsExpanded ? "" : "-rotate-90"}`}
+                  />
+                </button>
 
+                {!stopwordsExpanded ? null : (<>
                 {/* タブ切替 */}
-                <div className="flex gap-1 mb-3">
+                <div className="flex gap-1 mb-3 mt-3">
                   {(["ja", "en", "custom"] as const).map((tab) => (
                     <button
                       key={tab}
@@ -834,6 +857,7 @@ function CooccurrencePage() {
                 <p className="text-xs text-gray-400 mt-1 text-right">
                   {activeStopwords.length}語
                 </p>
+                </>)}
               </div>
             )}
 

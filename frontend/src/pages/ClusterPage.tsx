@@ -289,7 +289,7 @@ function ClusterPage() {
         {/* ========================================
             左パネル: パラメータ設定
             ======================================== */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           {/* アルゴリズム選択 */}
           <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3 flex items-center gap-2">

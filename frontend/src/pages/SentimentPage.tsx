@@ -22,6 +22,8 @@ import {
   Loader2,
   AlertCircle,
   TrendingUp,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useAnalysisStore } from "../stores/analysisStore";
 import { sentimentApi } from "../api/client";
@@ -117,6 +119,10 @@ function SentimentPage() {
   const [axes, setAxes] = useState<string[]>([]);
   const [textPreviews, setTextPreviews] = useState<Record<string, string>>({});
   const [attrFilters, setAttrFilters] = useState<Filters>({});
+
+  // ページネーション
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
   // キャッシュ復元
   useEffect(() => {
@@ -242,20 +248,21 @@ function SentimentPage() {
       const mappedPreviews = (data.text_previews as Record<string, string>) ?? {};
       setTextPreviews(mappedPreviews);
 
-      // 結果テーブル（最大20件）
+      // 結果テーブル（全件保持）
       const results = (
         data.results as Array<{
           record_id: string;
           labels: string[];
           scores: Record<string, number>;
         }>
-      ).slice(0, 20);
+      );
       const mappedRows = results.map((r) => ({
         id: r.record_id,
         labels: r.labels,
         scores: r.scores,
       }));
       setResultRows(mappedRows);
+      setPage(1);
 
       const mappedAxes = data.axes as string[];
       setAxes(mappedAxes);
@@ -302,9 +309,9 @@ function SentimentPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* ========================================
-            左パネル: 軸設定・コスト見積もり
+            左パネル: 軸設定・コスト見積もり（sticky）
             ======================================== */}
-        <div className="lg:col-span-1 space-y-4">
+        <div className="lg:col-span-1 space-y-4 lg:sticky lg:top-6 lg:self-start lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           {/* センチメント軸設定 */}
           <div className="card p-4">
             <h3 className="text-sm font-semibold text-gray-900 dark:text-white mb-3">
@@ -623,71 +630,146 @@ function SentimentPage() {
               )}
 
               {/* 分析結果テーブル */}
-              <div className="card overflow-hidden">
-                <div className="p-4 border-b border-gray-200 dark:border-gray-800">
-                  <h3 className="text-base font-semibold text-gray-900 dark:text-white">
-                    分析結果（{resultRows.length}件表示）
-                  </h3>
-                  {axes.length > 0 && (
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                      分析軸: {axes.join(", ")}
-                    </p>
-                  )}
-                </div>
-                <div className="overflow-x-auto">
-                  <table className="w-full">
-                    <thead>
-                      <tr className="bg-gray-50 dark:bg-gray-800/50">
-                        <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
-                          テキスト
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
-                          ラベル
-                        </th>
-                        <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
-                          スコア
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
-                      {resultRows.map((row) => {
-                        const primaryLabel = row.labels[0] ?? "-";
-                        const primaryScore =
-                          Object.values(row.scores)[0] ?? 0;
-                        const preview = textPreviews[row.id] ?? row.id.slice(0, 12) + "…";
-                        return (
-                          <tr
-                            key={row.id}
-                            className="hover:bg-gray-50 dark:hover:bg-gray-800/30"
+              {(() => {
+                const totalPages = Math.ceil(resultRows.length / pageSize);
+                const paginatedRows = resultRows.slice((page - 1) * pageSize, page * pageSize);
+                return (
+                  <div className="card overflow-hidden">
+                    <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between flex-wrap gap-2">
+                      <div>
+                        <h3 className="text-base font-semibold text-gray-900 dark:text-white">
+                          分析結果（全{resultRows.length}件）
+                        </h3>
+                        {axes.length > 0 && (
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            分析軸: {axes.join(", ")}
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-gray-500 dark:text-gray-400">表示件数:</label>
+                        <select
+                          value={pageSize}
+                          onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+                          className="text-xs rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 px-2 py-1"
+                        >
+                          {[10, 20, 50, 100].map((n) => (
+                            <option key={n} value={n}>{n}件</option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="bg-gray-50 dark:bg-gray-800/50">
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-12">
+                              #
+                            </th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase">
+                              テキスト
+                            </th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
+                              ラベル
+                            </th>
+                            <th className="px-4 py-3 text-center text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase w-32">
+                              スコア
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                          {paginatedRows.map((row, idx) => {
+                            const primaryLabel = row.labels[0] ?? "-";
+                            const primaryScore =
+                              Object.values(row.scores)[0] ?? 0;
+                            const preview = textPreviews[row.id] ?? row.id.slice(0, 12) + "…";
+                            return (
+                              <tr
+                                key={row.id}
+                                className="hover:bg-gray-50 dark:hover:bg-gray-800/30"
+                              >
+                                <td className="px-4 py-3 text-xs text-gray-400 tabular-nums">
+                                  {(page - 1) * pageSize + idx + 1}
+                                </td>
+                                <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-xs">
+                                  <span className="line-clamp-2" title={preview}>{preview}</span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span className={getLabelBadgeClass(primaryLabel)}>
+                                    {primaryLabel}
+                                  </span>
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  <span
+                                    className={`text-sm font-mono font-medium ${
+                                      primaryScore > 0.5
+                                        ? "text-emerald-600 dark:text-emerald-400"
+                                        : primaryScore < 0.3
+                                          ? "text-red-600 dark:text-red-400"
+                                          : "text-gray-600 dark:text-gray-400"
+                                    }`}
+                                  >
+                                    {primaryScore.toFixed(2)}
+                                  </span>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                    {/* ページネーション */}
+                    {totalPages > 1 && (
+                      <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+                        <p className="text-xs text-gray-500 dark:text-gray-400">
+                          {(page - 1) * pageSize + 1}〜{Math.min(page * pageSize, resultRows.length)}件 / 全{resultRows.length}件
+                        </p>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setPage(Math.max(1, page - 1))}
+                            disabled={page === 1}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
                           >
-                            <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 max-w-xs">
-                              <span className="line-clamp-2" title={preview}>{preview}</span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span className={getLabelBadgeClass(primaryLabel)}>
-                                {primaryLabel}
-                              </span>
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <span
-                                className={`text-sm font-mono font-medium ${
-                                  primaryScore > 0.5
-                                    ? "text-emerald-600 dark:text-emerald-400"
-                                    : primaryScore < 0.3
-                                      ? "text-red-600 dark:text-red-400"
-                                      : "text-gray-600 dark:text-gray-400"
+                            <ChevronLeft size={16} />
+                          </button>
+                          {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                            let pageNum: number;
+                            if (totalPages <= 7) {
+                              pageNum = i + 1;
+                            } else if (page <= 4) {
+                              pageNum = i + 1;
+                            } else if (page >= totalPages - 3) {
+                              pageNum = totalPages - 6 + i;
+                            } else {
+                              pageNum = page - 3 + i;
+                            }
+                            return (
+                              <button
+                                key={pageNum}
+                                onClick={() => setPage(pageNum)}
+                                className={`w-8 h-8 rounded-md text-xs font-medium transition-colors ${
+                                  page === pageNum
+                                    ? "bg-nexus-500 text-white"
+                                    : "text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"
                                 }`}
                               >
-                                {primaryScore.toFixed(2)}
-                              </span>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+                          <button
+                            onClick={() => setPage(Math.min(totalPages, page + 1))}
+                            disabled={page === totalPages}
+                            className="p-1.5 rounded-md text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30 disabled:cursor-not-allowed"
+                          >
+                            <ChevronRight size={16} />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           ) : (
             <div className="card p-16 flex flex-col items-center justify-center text-gray-400 dark:text-gray-500">

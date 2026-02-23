@@ -5,6 +5,7 @@ LLMによる判定フローと判定根拠ハイライト。
 """
 
 import json
+import re
 from uuid import uuid4
 
 import numpy as np
@@ -164,7 +165,7 @@ JSON配列で出力:
                 system_prompt="テキスト分類の専門家として、正確な判定と根拠を示してください。",
                 max_tokens=2000,
             )
-            data = json.loads(response.strip().strip("```json").strip("```"))
+            data = self._extract_json(response)
 
             results = []
             for item in data:
@@ -194,7 +195,7 @@ JSON配列で出力:
                     system_prompt="テキスト分類の専門家。簡潔にJSON配列で回答。",
                     max_tokens=1500,
                 )
-                retry_data = json.loads(retry_response.strip().strip("```json").strip("```"))
+                retry_data = self._extract_json(retry_response)
                 return [
                     SentimentResultItem(
                         record_id=str(item.get("id", "")),
@@ -207,6 +208,32 @@ JSON配列で出力:
             except Exception as retry_err:
                 logger.warning("sentiment_batch_retry_failed", error=str(retry_err))
                 return [SentimentResultItem(record_id=rid, labels=["分析失敗"], scores={}) for rid in record_ids]
+
+    @staticmethod
+    def _extract_json(text: str) -> list | dict:
+        """LLMレスポンスからJSONを堅牢に抽出"""
+        text = text.strip()
+        # 1. 直接パース
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+        # 2. markdown fence除去
+        cleaned = re.sub(r"^```(?:json)?\s*\n?", "", text)
+        cleaned = re.sub(r"\n?```\s*$", "", cleaned).strip()
+        try:
+            return json.loads(cleaned)
+        except json.JSONDecodeError:
+            pass
+        # 3. regex で JSON 配列またはオブジェクトを抽出
+        for pattern in [r"\[[\s\S]*\]", r"\{[\s\S]*\}"]:
+            match = re.search(pattern, text)
+            if match:
+                try:
+                    return json.loads(match.group())
+                except json.JSONDecodeError:
+                    continue
+        raise json.JSONDecodeError("No valid JSON found in LLM response", text, 0)
 
     def _build_time_series(self, results: list[SentimentResultItem], dates: list[str]) -> list[dict]:
         """時系列データの構築"""

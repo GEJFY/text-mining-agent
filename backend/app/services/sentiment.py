@@ -180,7 +180,33 @@ JSON配列で出力:
 
         except Exception as e:
             logger.warning("sentiment_batch_failed", error=str(e))
-            return [SentimentResultItem(record_id=rid, labels=["error"], scores={}) for rid in record_ids]
+            # リトライ: 簡略プロンプトで1回再試行
+            try:
+                axes_str = ", ".join(a.name for a in axes)
+                retry_prompt = (
+                    f"以下のテキストを感情分析してください。軸: {axes_str}\n\n"
+                    f"テキスト:\n{texts_section}\n\n"
+                    "JSON配列で出力: [{'id': '...', 'labels': [...], 'scores': {'軸名': 0.5}}]"
+                )
+                retry_response = await self.llm.invoke(
+                    prompt=retry_prompt,
+                    task_type=TaskType.BATCH_CLASSIFICATION,
+                    system_prompt="テキスト分類の専門家。簡潔にJSON配列で回答。",
+                    max_tokens=1500,
+                )
+                retry_data = json.loads(retry_response.strip().strip("```json").strip("```"))
+                return [
+                    SentimentResultItem(
+                        record_id=str(item.get("id", "")),
+                        labels=item.get("labels", []),
+                        scores=item.get("scores", {}),
+                        evidence_highlights=[],
+                    )
+                    for item in retry_data
+                ]
+            except Exception as retry_err:
+                logger.warning("sentiment_batch_retry_failed", error=str(retry_err))
+                return [SentimentResultItem(record_id=rid, labels=["分析失敗"], scores={}) for rid in record_ids]
 
     def _build_time_series(self, results: list[SentimentResultItem], dates: list[str]) -> list[dict]:
         """時系列データの構築"""

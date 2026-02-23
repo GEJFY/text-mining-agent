@@ -49,6 +49,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq5 \
     curl \
     fonts-ipaexfont \
+    fonts-noto-cjk \
     && rm -rf /var/lib/apt/lists/*
 
 # 非rootユーザーの作成

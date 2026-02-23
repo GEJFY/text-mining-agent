@@ -45,9 +45,10 @@ class DataImportService:
         column_mappings: list[ColumnMapping] | None = None,
         encoding: str | None = None,
         db: AsyncSession | None = None,
+        merge_dataset_id: str | None = None,
     ) -> DataImportResponse:
         """ファイルをインポートしDataFrameに変換"""
-        dataset_id = str(uuid4())
+        dataset_id = merge_dataset_id or str(uuid4())
         ext = Path(file_name).suffix.lower()
 
         if ext not in self.SUPPORTED_EXTENSIONS:
@@ -117,21 +118,40 @@ class DataImportService:
 
         # DB永続化
         if db is not None:
+            from sqlalchemy import func, select
+
             from app.models.orm import Dataset as DatasetModel
             from app.models.orm import TextRecord
 
-            dataset = DatasetModel(
-                id=dataset_id,
-                name=file_name,
-                file_name=file_name,
-                total_rows=len(df),
-                text_column=text_col,
-                encoding=encoding or "utf-8",
-                null_rate=null_rate,
-                char_count_stats=char_count_stats,
-                column_info={"columns": list(df.columns)},
-            )
-            db.add(dataset)
+            if merge_dataset_id:
+                # マージモード: 既存データセットにレコードを追加
+                existing = (
+                    await db.execute(select(DatasetModel).where(DatasetModel.id == merge_dataset_id))
+                ).scalar_one_or_none()
+                if not existing:
+                    raise ValueError(f"マージ先データセット（{merge_dataset_id}）が見つかりません。")
+
+                # 既存の最大row_indexを取得
+                max_idx_result = await db.execute(
+                    select(func.max(TextRecord.row_index)).where(TextRecord.dataset_id == merge_dataset_id)
+                )
+                max_idx = max_idx_result.scalar() or 0
+                row_offset = max_idx + 1
+            else:
+                # 新規データセット作成
+                dataset = DatasetModel(
+                    id=dataset_id,
+                    name=file_name,
+                    file_name=file_name,
+                    total_rows=len(df),
+                    text_column=text_col,
+                    encoding=encoding or "utf-8",
+                    null_rate=null_rate,
+                    char_count_stats=char_count_stats,
+                    column_info={"columns": list(df.columns)},
+                )
+                db.add(dataset)
+                row_offset = 0
 
             records = []
             for idx, row in df.iterrows():
@@ -155,7 +175,7 @@ class DataImportService:
                 records.append(
                     TextRecord(
                         dataset_id=dataset_id,
-                        row_index=int(idx),
+                        row_index=row_offset + int(idx),
                         text_content=text_content,
                         date_value=date_value,
                         attributes=attrs,
@@ -163,6 +183,11 @@ class DataImportService:
                 )
 
             db.add_all(records)
+
+            # マージ時は既存データセットのtotal_rowsを更新
+            if merge_dataset_id and existing:
+                existing.total_rows = (existing.total_rows or 0) + len(df)
+
             await db.flush()
 
         return DataImportResponse(

@@ -176,11 +176,15 @@ function AttributeFilter({ datasetId, filters, onChange }: AttributeFilterProps)
                     </div>
                   )}
 
-                  {/* カテゴリ型: チェックボックス + 検索 */}
-                  {!isDate && attr.type === "categorical" && (
-                    <div>
-                      {/* 値が多い場合は検索バーを表示 */}
-                      {attr.unique_count > 8 && (
+                  {/* カテゴリ型: チェックボックス + 検索（常時表示） */}
+                  {!isDate && attr.type === "categorical" && (() => {
+                    const q = catSearch[attr.name]?.toLowerCase();
+                    const filteredVals = attr.unique_values.filter(
+                      (val) => !q || val.toLowerCase().includes(q)
+                    );
+                    const currentSelected = Array.isArray(filters[attr.name]) ? (filters[attr.name] as string[]) : [];
+                    return (
+                      <div>
                         <div className="relative mb-1">
                           <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400" />
                           <input
@@ -191,25 +195,27 @@ function AttributeFilter({ datasetId, filters, onChange }: AttributeFilterProps)
                             className="input-field text-xs py-1 pl-6"
                           />
                         </div>
-                      )}
-                      <div className="flex flex-wrap gap-1 max-h-28 overflow-y-auto">
-                        {attr.unique_values
-                          .filter((val) => {
-                            const q = catSearch[attr.name]?.toLowerCase();
-                            return !q || val.toLowerCase().includes(q);
-                          })
-                          .map((val) => {
-                            const selected = Array.isArray(filters[attr.name])
-                              ? (filters[attr.name] as string[]).includes(val)
-                              : false;
+                        {q && filteredVals.length > 0 && (
+                          <button
+                            onClick={() => {
+                              const merged = [...new Set([...currentSelected, ...filteredVals])];
+                              updateFilter(attr.name, merged.length > 0 ? merged : undefined);
+                            }}
+                            className="text-xs text-nexus-600 dark:text-nexus-400 hover:underline mb-1"
+                          >
+                            検索結果を一括選択（{filteredVals.length}件）
+                          </button>
+                        )}
+                        <div className="flex flex-wrap gap-1 max-h-32 overflow-y-auto">
+                          {filteredVals.map((val) => {
+                            const selected = currentSelected.includes(val);
                             return (
                               <button
                                 key={val}
                                 onClick={() => {
-                                  const current = (filters[attr.name] as string[]) || [];
                                   const next = selected
-                                    ? current.filter((v) => v !== val)
-                                    : [...current, val];
+                                    ? currentSelected.filter((v) => v !== val)
+                                    : [...currentSelected, val];
                                   updateFilter(attr.name, next.length > 0 ? next : undefined);
                                 }}
                                 className={`px-2 py-0.5 rounded text-xs transition-colors ${
@@ -222,9 +228,10 @@ function AttributeFilter({ datasetId, filters, onChange }: AttributeFilterProps)
                               </button>
                             );
                           })}
+                        </div>
                       </div>
-                    </div>
-                  )}
+                    );
+                  })()}
 
                   {/* テキスト型 */}
                   {!isDate && attr.type === "text" && (

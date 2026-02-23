@@ -61,9 +61,13 @@ function ImportPage() {
   const addDataset = useAnalysisStore((s) => s.addDataset);
   const setActiveDataset = useAnalysisStore((s) => s.setActiveDataset);
 
+  const datasets = useAnalysisStore((s) => s.datasets);
+
   const [dragActive, setDragActive] = useState(false);
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [mergeMode, setMergeMode] = useState(false);
+  const [mergeDatasetId, setMergeDatasetId] = useState<string>("");
   const [step, setStep] = useState<"upload" | "mapping" | "preview" | "importing" | "complete">("upload");
   const [columns, setColumns] = useState<string[]>([]);
   const [previewData, setPreviewData] = useState<PreviewRow[]>([]);
@@ -228,6 +232,7 @@ function ImportPage() {
       const res = await datasetsApi.upload(uploadedFile, {
         textColumn: textMapping?.csvColumn ?? undefined,
         columnMappings: backendMappings.length > 0 ? backendMappings : undefined,
+        mergeDatasetId: mergeMode && mergeDatasetId ? mergeDatasetId : undefined,
       });
 
       const result: ImportResult = res.data;
@@ -280,6 +285,8 @@ function ImportPage() {
     setImportResult(null);
     setError(null);
     setTotalRowCount(0);
+    setMergeMode(false);
+    setMergeDatasetId("");
   };
 
   // ファイルサイズをフォーマット
@@ -453,6 +460,61 @@ function ImportPage() {
             </button>
           </div>
 
+          {/* マージインポート設定 */}
+          {datasets.length > 0 && (
+            <div className="card p-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <Database size={18} className="text-nexus-500" />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900 dark:text-white">
+                      既存データセットにマージ
+                    </p>
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
+                      新規インポートではなく、既存データセットにレコードを追加します
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    setMergeMode(!mergeMode);
+                    if (mergeMode) setMergeDatasetId("");
+                  }}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                    mergeMode ? "bg-nexus-600" : "bg-gray-300 dark:bg-gray-600"
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      mergeMode ? "translate-x-6" : "translate-x-1"
+                    }`}
+                  />
+                </button>
+              </div>
+              {mergeMode && (
+                <div className="mt-3 pl-9">
+                  <select
+                    value={mergeDatasetId}
+                    onChange={(e) => setMergeDatasetId(e.target.value)}
+                    className="input-field text-sm"
+                  >
+                    <option value="">-- マージ先データセットを選択 --</option>
+                    {datasets.map((ds) => (
+                      <option key={ds.id} value={ds.id}>
+                        {ds.name} ({ds.rowCount.toLocaleString()}行)
+                      </option>
+                    ))}
+                  </select>
+                  {mergeMode && !mergeDatasetId && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400 mt-1">
+                      マージ先のデータセットを選択してください
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* マッピングテーブル */}
           <div className="card p-6">
             <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
@@ -592,9 +654,13 @@ function ImportPage() {
                   プレビュー
                 </button>
               ) : (
-                <button onClick={handleImport} className="btn-primary">
+                <button
+                  onClick={handleImport}
+                  className="btn-primary"
+                  disabled={mergeMode && !mergeDatasetId}
+                >
                   <Upload size={16} />
-                  インポート実行
+                  {mergeMode ? "マージ実行" : "インポート実行"}
                 </button>
               )}
             </div>
@@ -707,9 +773,13 @@ function ImportPage() {
               >
                 戻る
               </button>
-              <button onClick={handleImport} className="btn-primary">
+              <button
+                onClick={handleImport}
+                className="btn-primary"
+                disabled={mergeMode && !mergeDatasetId}
+              >
                 <Upload size={16} />
-                インポート実行
+                {mergeMode ? "マージ実行" : "インポート実行"}
               </button>
             </div>
           </div>

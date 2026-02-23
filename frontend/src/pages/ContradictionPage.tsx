@@ -67,12 +67,12 @@ function ContradictionPage() {
 
   // キャッシュ復元
   useEffect(() => {
-    const cached = getCachedResult("contradiction");
+    const cached = getCachedResult(`contradiction_${sensitivity}`);
     if (cached?.hasResults) {
       setContradictions(cached.data.contradictions ?? []);
       setHasResults(true);
     }
-  }, [getCachedResult]);
+  }, [getCachedResult, sensitivity]);
 
   const handleRun = async () => {
     if (!activeDatasetId) return;
@@ -106,7 +106,7 @@ function ContradictionPage() {
 
       setContradictions(mapped);
       setHasResults(true);
-      setCachedResult("contradiction", { data: { contradictions: mapped }, hasResults: true });
+      setCachedResult(`contradiction_${sensitivity}`, { data: { contradictions: mapped }, hasResults: true });
     } catch (err) {
       const message =
         err instanceof Error ? err.message : "矛盾検出に失敗しました";
@@ -133,7 +133,7 @@ function ContradictionPage() {
 
   return (
     <DatasetGuard>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full">
         {/* エラー表示 */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">

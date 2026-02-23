@@ -152,7 +152,7 @@ export const datasetsApi = {
   list: () => apiClient.get("/data/datasets"),
 
   /** データセットをアップロード */
-  upload: (file: File, config?: { textColumn?: string; columnMappings?: Array<{ column_name: string; role: string }> }) => {
+  upload: (file: File, config?: { textColumn?: string; columnMappings?: Array<{ column_name: string; role: string }>; mergeDatasetId?: string }) => {
     const formData = new FormData();
     formData.append("file", file);
     if (config?.textColumn) {
@@ -160,6 +160,9 @@ export const datasetsApi = {
     }
     if (config?.columnMappings) {
       formData.append("column_mappings", JSON.stringify(config.columnMappings));
+    }
+    if (config?.mergeDatasetId) {
+      formData.append("merge_dataset_id", config.mergeDatasetId);
     }
     return apiClient.post("/data/import", formData, {
       headers: { "Content-Type": "multipart/form-data" },

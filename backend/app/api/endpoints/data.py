@@ -22,6 +22,7 @@ async def import_data(
     file: UploadFile = File(...),
     column_mappings: str = Form(default="[]"),
     encoding: str | None = Form(default=None),
+    merge_dataset_id: str | None = Form(default=None),
     db: AsyncSession = Depends(get_db),
     _current_user: TokenData = Depends(get_current_user),
 ) -> DataImportResponse:
@@ -57,6 +58,7 @@ async def import_data(
             column_mappings=mappings if mappings else None,
             encoding=encoding,
             db=db,
+            merge_dataset_id=merge_dataset_id,
         )
     except UnicodeDecodeError as e:
         raise FileProcessingError(

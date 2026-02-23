@@ -489,20 +489,34 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         *,
         title: str = "NexusText AI 分析レポート",
     ) -> Path:
-        """PowerPoint出力"""
+        """PowerPoint出力（CJKフォント対応）"""
         from pptx import Presentation
+        from pptx.util import Pt
+
+        cjk_font_name = self._find_cjk_font_name() or "Yu Gothic"
 
         prs = Presentation()
 
         # タイトルスライド
         slide = prs.slides.add_slide(prs.slide_layouts[0])
         slide.shapes.title.text = title
+        for paragraph in slide.shapes.title.text_frame.paragraphs:
+            for run in paragraph.runs:
+                run.font.name = cjk_font_name
+                run.font.size = Pt(28)
 
         for section in contents:
             slide = prs.slides.add_slide(prs.slide_layouts[1])
             slide.shapes.title.text = section.get("title", "")
+            for paragraph in slide.shapes.title.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = cjk_font_name
             body = slide.placeholders[1]
             body.text = section.get("content", "")
+            for paragraph in body.text_frame.paragraphs:
+                for run in paragraph.runs:
+                    run.font.name = cjk_font_name
+                    run.font.size = Pt(14)
 
         path = self.output_dir / f"{report_id}.pptx"
         prs.save(str(path))
@@ -522,11 +536,14 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         from reportlab.pdfbase.ttfonts import TTFont
         from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
-        # CJKフォント登録（IPAexGothic → MSGothic のフォールバック）
+        # CJKフォント登録（IPAexGothic → Noto Sans CJK → MSGothic のフォールバック）
         cjk_font = "Helvetica"
         font_candidates = [
             ("/usr/share/fonts/truetype/ipaexfont-gothic/ipaexg.ttf", "IPAexGothic"),
+            ("/usr/share/fonts/opentype/ipaexfont-gothic/ipaexg.ttf", "IPAexGothic"),
             ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "NotoSansCJK"),
+            ("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", "NotoSansCJK"),
+            ("/usr/share/fonts/opentype/noto/NotoSansCJKjp-Regular.otf", "NotoSansCJKjp"),
             ("C:/Windows/Fonts/msgothic.ttc", "MSGothic"),
             ("C:/Windows/Fonts/YuGothM.ttc", "YuGothic"),
         ]
@@ -576,35 +593,76 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
         *,
         title: str = "NexusText AI 分析レポート",
     ) -> Path:
-        """Word出力"""
+        """Word出力（CJKフォント対応）"""
         from docx import Document
+        from docx.shared import Pt
+
+        cjk_font_name = self._find_cjk_font_name()
 
         doc = Document()
-        doc.add_heading(title, level=0)
+        h = doc.add_heading(title, level=0)
+        if cjk_font_name:
+            for run in h.runs:
+                run.font.name = cjk_font_name
+                run.font.size = Pt(18)
 
         for section in contents:
-            doc.add_heading(section.get("title", ""), level=1)
-            doc.add_paragraph(section.get("content", ""))
+            h2 = doc.add_heading(section.get("title", ""), level=1)
+            if cjk_font_name:
+                for run in h2.runs:
+                    run.font.name = cjk_font_name
+            p = doc.add_paragraph(section.get("content", ""))
+            if cjk_font_name:
+                for run in p.runs:
+                    run.font.name = cjk_font_name
 
             refs = section.get("evidence_refs", [])
             if refs:
-                doc.add_heading("エビデンス", level=2)
+                h3 = doc.add_heading("エビデンス", level=2)
+                if cjk_font_name:
+                    for run in h3.runs:
+                        run.font.name = cjk_font_name
                 for ref in refs:
-                    doc.add_paragraph(f"• {ref}", style="List Bullet")
+                    bp = doc.add_paragraph(f"• {ref}", style="List Bullet")
+                    if cjk_font_name:
+                        for run in bp.runs:
+                            run.font.name = cjk_font_name
 
         path = self.output_dir / f"{report_id}.docx"
         doc.save(str(path))
         return path
 
+    def _find_cjk_font_name(self) -> str | None:
+        """CJKフォント名を検出"""
+        candidates = [
+            ("/usr/share/fonts/truetype/ipaexfont-gothic/ipaexg.ttf", "IPAexGothic"),
+            ("/usr/share/fonts/opentype/ipaexfont-gothic/ipaexg.ttf", "IPAexGothic"),
+            ("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK JP"),
+            ("/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc", "Noto Sans CJK JP"),
+        ]
+        for font_path, font_name in candidates:
+            if Path(font_path).exists():
+                return font_name
+        return None
+
     async def _export_excel(self, report_id: str, contents: list[dict]) -> Path:
-        """Excel出力"""
+        """Excel出力（CJKフォント対応）"""
         import openpyxl
+        from openpyxl.styles import Font
+
+        cjk_font_name = self._find_cjk_font_name() or "Yu Gothic"
 
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "レポート"
 
+        header_font = Font(name=cjk_font_name, bold=True, size=11)
+        cell_font = Font(name=cjk_font_name, size=10)
+
         ws.append(["セクション", "内容", "エビデンス"])
+        for cell in ws[1]:
+            cell.font = header_font
+
         for section in contents:
             ws.append(
                 [
@@ -613,6 +671,8 @@ JSON配列で5-7セクションのタイトルを出力: ["セクション1", "�
                     " | ".join(section.get("evidence_refs", [])),
                 ]
             )
+            for cell in ws[ws.max_row]:
+                cell.font = cell_font
 
         path = self.output_dir / f"{report_id}.xlsx"
         wb.save(str(path))

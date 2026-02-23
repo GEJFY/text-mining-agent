@@ -8,6 +8,11 @@ import {
   BarChart,
   Bar,
   Cell,
+  RadarChart,
+  PolarGrid,
+  PolarAngleAxis,
+  PolarRadiusAxis,
+  Radar,
 } from "recharts";
 import {
   Play,
@@ -77,10 +82,12 @@ const DISTRIBUTION_COLORS: Record<string, string> = {
 
 // ラベルの感情分類
 const POSITIVE_LABELS = new Set(["positive", "Positive", "ポジティブ", "満足", "好意的", "very_positive"]);
-const NEGATIVE_LABELS = new Set(["negative", "Negative", "ネガティブ", "不満", "批判的", "very_negative", "error"]);
+const NEGATIVE_LABELS = new Set(["negative", "Negative", "ネガティブ", "不満", "批判的", "very_negative"]);
+const ERROR_LABELS = new Set(["error", "分析失敗"]);
 
 const getLabelBadgeClass = (label: string) =>
-  POSITIVE_LABELS.has(label) ? "badge-positive"
+  ERROR_LABELS.has(label) ? "badge-warning"
+  : POSITIVE_LABELS.has(label) ? "badge-positive"
   : NEGATIVE_LABELS.has(label) ? "badge-negative"
   : "badge-neutral";
 
@@ -268,7 +275,7 @@ function SentimentPage() {
 
   return (
     <DatasetGuard>
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* エラー表示 */}
       {error && (
         <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
@@ -588,6 +595,29 @@ function SentimentPage() {
                         ))}
                       </Bar>
                     </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+
+              {/* レーダーチャート（3軸以上の場合に表示） */}
+              {axes.length >= 3 && distribution.length > 0 && (
+                <div className="card p-6">
+                  <h3 className="text-base font-semibold text-gray-900 dark:text-white mb-4">
+                    感情プロファイル レーダーチャート
+                  </h3>
+                  <ResponsiveContainer width="100%" height={300}>
+                    <RadarChart data={distribution.map((d) => ({ axis: d.label, value: d.count }))}>
+                      <PolarGrid stroke="#e5e7eb" />
+                      <PolarAngleAxis dataKey="axis" tick={{ fill: "#9ca3af", fontSize: 11 }} />
+                      <PolarRadiusAxis tick={{ fill: "#9ca3af", fontSize: 10 }} />
+                      <Radar
+                        name="件数"
+                        dataKey="value"
+                        stroke="var(--color-nexus-500)"
+                        fill="var(--color-nexus-500)"
+                        fillOpacity={0.3}
+                      />
+                    </RadarChart>
                   </ResponsiveContainer>
                 </div>
               )}

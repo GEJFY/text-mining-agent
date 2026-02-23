@@ -126,18 +126,14 @@ class DataImportService:
             if merge_dataset_id:
                 # マージモード: 既存データセットにレコードを追加
                 existing = (
-                    await db.execute(
-                        select(DatasetModel).where(DatasetModel.id == merge_dataset_id)
-                    )
+                    await db.execute(select(DatasetModel).where(DatasetModel.id == merge_dataset_id))
                 ).scalar_one_or_none()
                 if not existing:
                     raise ValueError(f"マージ先データセット（{merge_dataset_id}）が見つかりません。")
 
                 # 既存の最大row_indexを取得
                 max_idx_result = await db.execute(
-                    select(func.max(TextRecord.row_index)).where(
-                        TextRecord.dataset_id == merge_dataset_id
-                    )
+                    select(func.max(TextRecord.row_index)).where(TextRecord.dataset_id == merge_dataset_id)
                 )
                 max_idx = max_idx_result.scalar() or 0
                 row_offset = max_idx + 1

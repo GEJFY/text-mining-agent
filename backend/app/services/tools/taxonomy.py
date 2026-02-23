@@ -117,7 +117,7 @@ JSON配列で出力:
 
         texts_block = "\n".join(f"[{i}] {text[:200]}" for i, text in enumerate(classify_texts))
 
-        pass2_prompt = f"""以下の{len(classify_texts)}件のテキスト（インデックス0〜{len(classify_texts)-1}）を
+        pass2_prompt = f"""以下の{len(classify_texts)}件のテキスト（インデックス0〜{len(classify_texts) - 1}）を
 指定カテゴリに分類し、各カテゴリのサブカテゴリを発見してください。
 
 カテゴリ: {json.dumps(category_names, ensure_ascii=False)}
@@ -127,7 +127,7 @@ JSON配列で出力:
 
 重要な要件:
 - 全{len(classify_texts)}件のテキストをいずれかのカテゴリに分類すること
-- text_indicesには該当テキストのインデックス番号（[0]〜[{len(classify_texts)-1}]）を必ず含めること
+- text_indicesには該当テキストのインデックス番号（[0]〜[{len(classify_texts) - 1}]）を必ず含めること
 - text_countはtext_indicesの要素数と一致させること
 - 各カテゴリ内で共通パターンからサブカテゴリを発見（最大{max_depth - 1}階層）
 - 分類できないテキストのみuncategorized_countに計上

@@ -142,8 +142,8 @@ function AppLayout() {
   // 起動時にパレット設定を復元
   useEffect(() => {
     const palette = localStorage.getItem("nexustext-palette");
-    if (palette === "indigo") {
-      document.documentElement.setAttribute("data-palette", "indigo");
+    if (palette && palette !== "pwc") {
+      document.documentElement.setAttribute("data-palette", palette);
     }
   }, []);
 
@@ -296,29 +296,35 @@ function AppLayout() {
 
         {/* サイドバー下部 */}
         <div className="border-t border-gray-200 dark:border-gray-800 p-2">
-          {/* カラーパレット切替 */}
+          {/* カラーパレット切替（6テーマ） */}
           {!sidebarCollapsed && (
-            <div className="flex items-center gap-2 px-3 py-2">
-              <span className="text-xs text-gray-500 dark:text-gray-400">テーマ:</span>
-              {[
-                { id: "pwc", color: "#D04A02", label: "PwC" },
-                { id: "indigo", color: "#6366f1", label: "Indigo" },
-              ].map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    if (p.id === "indigo") {
-                      document.documentElement.setAttribute("data-palette", "indigo");
-                    } else {
-                      document.documentElement.removeAttribute("data-palette");
-                    }
-                    localStorage.setItem("nexustext-palette", p.id);
-                  }}
-                  className="w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
-                  style={{ backgroundColor: p.color }}
-                  title={p.label}
-                />
-              ))}
+            <div className="px-3 py-2">
+              <span className="text-xs text-gray-500 dark:text-gray-400 mb-1.5 block">テーマ:</span>
+              <div className="grid grid-cols-6 gap-1.5">
+                {[
+                  { id: "pwc", color: "#D04A02", label: "Orange" },
+                  { id: "indigo", color: "#6366f1", label: "Indigo" },
+                  { id: "teal", color: "#14b8a6", label: "Teal" },
+                  { id: "emerald", color: "#10b981", label: "Emerald" },
+                  { id: "slate", color: "#64748b", label: "Slate" },
+                  { id: "purple", color: "#a855f7", label: "Purple" },
+                ].map((p) => (
+                  <button
+                    key={p.id}
+                    onClick={() => {
+                      if (p.id === "pwc") {
+                        document.documentElement.removeAttribute("data-palette");
+                      } else {
+                        document.documentElement.setAttribute("data-palette", p.id);
+                      }
+                      localStorage.setItem("nexustext-palette", p.id);
+                    }}
+                    className="w-6 h-6 rounded-full border-2 border-gray-300 dark:border-gray-600 hover:scale-110 transition-transform"
+                    style={{ backgroundColor: p.color }}
+                    title={p.label}
+                  />
+                ))}
+              </div>
             </div>
           )}
 
@@ -393,11 +399,11 @@ function AppLayout() {
           {/* ヘッダー右側 */}
           <div className="ml-auto flex items-center gap-3">
             <a
-              href="/docs/user-manual.pdf"
+              href={`${import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8002"}/docs`}
               target="_blank"
               rel="noopener noreferrer"
               className="btn-ghost"
-              title="ユーザーマニュアル"
+              title="APIドキュメント"
             >
               <BookOpen size={18} />
             </a>

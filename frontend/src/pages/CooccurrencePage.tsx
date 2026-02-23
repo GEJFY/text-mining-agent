@@ -176,13 +176,13 @@ function CooccurrencePage() {
           .id((d) => d.id)
           .distance((d) => 80 - (d.weight / maxWeight) * 40),
       )
-      .force("charge", d3.forceManyBody().strength(-350))
+      .force("charge", d3.forceManyBody().strength(-120))
       .force("center", d3.forceCenter(width / 2, height / 2))
-      .force("x", d3.forceX(width / 2).strength(0.05))
-      .force("y", d3.forceY(height / 2).strength(0.05))
+      .force("x", d3.forceX(width / 2).strength(0.08))
+      .force("y", d3.forceY(height / 2).strength(0.08))
       .force(
         "collision",
-        d3.forceCollide<GraphNode>().radius((d) => d.r + 8),
+        d3.forceCollide<GraphNode>().radius((d) => d.r + 4),
       );
 
     // エッジ描画
@@ -630,7 +630,7 @@ function CooccurrencePage() {
 
   return (
     <DatasetGuard>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full">
         {/* エラー表示 */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
@@ -841,8 +841,9 @@ function CooccurrencePage() {
             {hasResults && (
               <div className="card p-4">
                 <div className="flex justify-between text-sm">
-                  <span className="text-gray-500 dark:text-gray-400">
+                  <span className="text-gray-500 dark:text-gray-400 flex items-center">
                     モジュラリティ
+                    <InfoTooltip text="ネットワークがコミュニティに分割される度合い（0〜1）。0.3以上で有意なコミュニティ構造、0.5以上で明確な構造あり。値が高いほど語彙グループ間の境界が明確です。" width="md" />
                   </span>
                   <span className="font-mono font-medium text-gray-900 dark:text-white">
                     {modularity.toFixed(4)}

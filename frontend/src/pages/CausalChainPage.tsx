@@ -108,7 +108,7 @@ function CausalChainPage() {
 
   return (
     <DatasetGuard>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full">
         {/* エラー表示 */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
@@ -288,7 +288,7 @@ function CausalChainPage() {
                         />
                         <Bar
                           dataKey="confidence"
-                          fill="#6366f1"
+                          fill="var(--color-nexus-500)"
                           radius={[0, 4, 4, 0]}
                         />
                       </BarChart>
@@ -326,15 +326,16 @@ function CausalChainPage() {
                       <div className="flex items-center gap-4 text-xs text-gray-500 dark:text-gray-400">
                         <div className="flex items-center gap-2">
                           <span>信頼度:</span>
-                          <div className="w-24 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                          <div className="w-32 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                             <div
-                              className="h-full rounded-full bg-nexus-500"
+                              className="h-full rounded-full"
                               style={{
                                 width: `${chain.confidence * 100}%`,
+                                backgroundColor: chain.confidence > 0.7 ? "var(--color-success)" : chain.confidence > 0.4 ? "var(--color-warning)" : "var(--color-danger)",
                               }}
                             />
                           </div>
-                          <span className="font-mono">
+                          <span className="font-mono font-medium" style={{ color: chain.confidence > 0.7 ? "var(--color-success)" : chain.confidence > 0.4 ? "var(--color-warning)" : "var(--color-danger)" }}>
                             {(chain.confidence * 100).toFixed(0)}%
                           </span>
                         </div>

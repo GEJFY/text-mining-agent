@@ -179,7 +179,7 @@ function ActionabilityPage() {
 
   return (
     <DatasetGuard>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full">
         {/* エラー表示 */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
@@ -318,8 +318,8 @@ function ActionabilityPage() {
                           />
                           <Radar
                             dataKey="value"
-                            stroke="#6366f1"
-                            fill="#6366f1"
+                            stroke="var(--color-nexus-500)"
+                            fill="var(--color-nexus-500)"
                             fillOpacity={0.3}
                             strokeWidth={2}
                           />
@@ -362,6 +362,51 @@ function ActionabilityPage() {
                     </ResponsiveContainer>
                   </div>
                 </div>
+
+                {/* スコアリング方法論 */}
+                <details className="card p-4">
+                  <summary className="text-sm font-semibold text-gray-900 dark:text-white cursor-pointer">
+                    スコアリング方法論
+                  </summary>
+                  <div className="mt-3 overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-200 dark:border-gray-700">
+                          <th className="text-left py-2 pr-4 text-gray-500">評価次元</th>
+                          <th className="text-center py-2 px-2 text-gray-500">0.0</th>
+                          <th className="text-center py-2 px-2 text-gray-500">0.5</th>
+                          <th className="text-center py-2 px-2 text-gray-500">1.0</th>
+                        </tr>
+                      </thead>
+                      <tbody className="text-gray-600 dark:text-gray-400">
+                        <tr className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-2 pr-4 font-medium">具体性</td>
+                          <td className="py-2 px-2 text-center">抽象的</td>
+                          <td className="py-2 px-2 text-center">一般的</td>
+                          <td className="py-2 px-2 text-center">非常に具体的</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-2 pr-4 font-medium">緊急度</td>
+                          <td className="py-2 px-2 text-center">低い</td>
+                          <td className="py-2 px-2 text-center">中程度</td>
+                          <td className="py-2 px-2 text-center">即時対応必要</td>
+                        </tr>
+                        <tr className="border-b border-gray-100 dark:border-gray-800">
+                          <td className="py-2 pr-4 font-medium">実現可能性</td>
+                          <td className="py-2 px-2 text-center">困難</td>
+                          <td className="py-2 px-2 text-center">対応可能</td>
+                          <td className="py-2 px-2 text-center">容易に実行可能</td>
+                        </tr>
+                        <tr>
+                          <td className="py-2 pr-4 font-medium">インパクト</td>
+                          <td className="py-2 px-2 text-center">限定的</td>
+                          <td className="py-2 px-2 text-center">中程度</td>
+                          <td className="py-2 px-2 text-center">大きな影響</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </details>
 
                 {/* スコアカード一覧 */}
                 <div className="space-y-3">

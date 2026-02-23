@@ -193,7 +193,7 @@ function TaxonomyPage() {
 
   return (
     <DatasetGuard>
-      <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="space-y-6 w-full">
         {/* エラー表示 */}
         {error && (
           <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">

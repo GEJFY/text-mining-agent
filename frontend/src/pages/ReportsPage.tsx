@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { FileText, Presentation, FileType2, Sheet } from 'lucide-react';
 import apiClient, { reportsApi } from '../api/client';
 import { useAnalysisStore } from '../stores/analysisStore';
 import DatasetGuard from '../components/DatasetGuard';
@@ -23,10 +24,10 @@ const TEMPLATE_PROMPTS: Record<string, string> = {
 };
 
 const FORMATS = [
-  { value: 'pdf', label: 'PDF', icon: '📄' },
-  { value: 'pptx', label: 'PowerPoint', icon: '📊' },
-  { value: 'docx', label: 'Word', icon: '📝' },
-  { value: 'excel', label: 'Excel', icon: '📈' },
+  { value: 'pdf', label: 'PDF', icon: <FileText size={20} className="text-nexus-600" /> },
+  { value: 'pptx', label: 'PowerPoint', icon: <Presentation size={20} className="text-nexus-600" /> },
+  { value: 'docx', label: 'Word', icon: <FileType2 size={20} className="text-nexus-600" /> },
+  { value: 'excel', label: 'Excel', icon: <Sheet size={20} className="text-nexus-600" /> },
 ];
 
 export default function ReportsPage() {
@@ -125,7 +126,7 @@ export default function ReportsPage() {
                       : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
                   }`}
                 >
-                  <span className="text-xl">{f.icon}</span>
+                  <span>{f.icon}</span>
                   <span className="font-medium text-gray-800 dark:text-gray-200">{f.label}</span>
                 </button>
               ))}

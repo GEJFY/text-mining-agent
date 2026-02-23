@@ -23,13 +23,14 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { dashboardApi } from "../api/client";
+import { getThemeColors } from "../hooks/useThemeColors";
 
 /**
  * ダッシュボードページ
  * KPIカード、分析ジョブ分布、最近のアクティビティをAPIから取得して表示
  */
 
-const PIE_COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f59e0b", "#10b981"];
+const PIE_COLORS = getThemeColors().slice(0, 5);
 
 /** 分析タイプの日本語ラベル */
 const ANALYSIS_TYPE_LABELS: Record<string, string> = {
@@ -125,7 +126,7 @@ function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="max-w-7xl mx-auto flex flex-col items-center justify-center h-64">
+      <div className="w-full flex flex-col items-center justify-center h-64">
         <Loader2 size={36} className="animate-spin text-nexus-500 mb-4" />
         <p className="text-gray-500 dark:text-gray-400">読み込み中...</p>
       </div>
@@ -134,7 +135,7 @@ function DashboardPage() {
 
   if (error) {
     return (
-      <div className="max-w-7xl mx-auto">
+      <div className="w-full">
         <div className="card p-8 flex flex-col items-center text-center">
           <AlertCircle size={36} className="text-red-500 mb-3" />
           <p className="text-gray-700 dark:text-gray-300">{error}</p>
@@ -148,7 +149,7 @@ function DashboardPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* ========================================
           KPIカード
           ======================================== */}

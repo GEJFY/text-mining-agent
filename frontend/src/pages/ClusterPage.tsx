@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   ScatterChart,
   Scatter,
@@ -107,7 +107,7 @@ function ClusterPage() {
     useAnalysisStore();
   const [isRunning, setIsRunning] = useState(false);
   const [hasResults, setHasResults] = useState(false);
-  const [selectedCluster, setSelectedCluster] = useState<number | null>(null);
+  const [selectedClusters, setSelectedClusters] = useState<Set<number>>(new Set());
   const [error, setError] = useState<string | null>(null);
 
   // API結果を保持するローカルステート
@@ -136,7 +136,7 @@ function ClusterPage() {
 
     setIsRunning(true);
     setError(null);
-    setSelectedCluster(null);
+    setSelectedClusters(new Set());
 
     try {
       const response = await clusterApi.run(activeDatasetId, {
@@ -235,17 +235,32 @@ function ClusterPage() {
     }
   };
 
-  // 散布図のフィルタリング
-  const filteredPoints =
-    selectedCluster !== null
-      ? points.filter(
-          (p) => p.clusterId === selectedCluster || p.isOutlier,
-        )
-      : points;
+  // 軸ドメインを全データから計算（選択に関わらず固定）
+  const axisDomain = useMemo(() => {
+    if (points.length === 0) return { xMin: 0, xMax: 1, yMin: 0, yMax: 1 };
+    const xs = points.map((p) => p.x);
+    const ys = points.map((p) => p.y);
+    const xMin = Math.min(...xs);
+    const xMax = Math.max(...xs);
+    const yMin = Math.min(...ys);
+    const yMax = Math.max(...ys);
+    const xPad = (xMax - xMin) * 0.05 || 1;
+    const yPad = (yMax - yMin) * 0.05 || 1;
+    return { xMin: xMin - xPad, xMax: xMax + xPad, yMin: yMin - yPad, yMax: yMax + yPad };
+  }, [points]);
+
+  // マルチクラスタ選択のトグル
+  const toggleCluster = (id: number) => {
+    setSelectedClusters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   return (
     <DatasetGuard>
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 w-full">
       {/* エラー表示 */}
       {error && (
         <div className="flex items-start gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800">
@@ -505,16 +520,16 @@ function ClusterPage() {
             右パネル: 結果表示
             ======================================== */}
         <div className="lg:col-span-3 space-y-4">
-          {/* UMAP散布図 */}
-          <div className="card p-6">
+          {/* UMAP散布図（スクロールしても固定表示） */}
+          <div className="card p-6 lg:sticky lg:top-0 lg:z-10">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-base font-semibold text-gray-900 dark:text-white flex items-center">
                 UMAP クラスタ散布図
                 <InfoTooltip title="UMAP散布図" text="高次元のテキストデータを2次元に圧縮（次元削減）して可視化したものです。近くに配置されたドットは内容が類似したテキストを表します。同じ色のドットは同じクラスタに属しています。灰色のドットはどのクラスタにも明確に属さない外れ値（ノイズ点）です。UMAP-1/UMAP-2の軸は数学的に導出された座標で、直接的な意味はありません。" />
               </h3>
-              {selectedCluster !== null && (
+              {selectedClusters.size > 0 && (
                 <button
-                  onClick={() => setSelectedCluster(null)}
+                  onClick={() => setSelectedClusters(new Set())}
                   className="btn-ghost text-sm"
                 >
                   全クラスタ表示
@@ -536,6 +551,8 @@ function ClusterPage() {
                     type="number"
                     dataKey="x"
                     name="UMAP-1"
+                    domain={[axisDomain.xMin, axisDomain.xMax]}
+                    allowDataOverflow={false}
                     tick={{ fill: "#9ca3af", fontSize: 11 }}
                     label={{
                       value: "UMAP-1",
@@ -547,6 +564,8 @@ function ClusterPage() {
                     type="number"
                     dataKey="y"
                     name="UMAP-2"
+                    domain={[axisDomain.yMin, axisDomain.yMax]}
+                    allowDataOverflow={false}
                     tick={{ fill: "#9ca3af", fontSize: 11 }}
                     label={{
                       value: "UMAP-2",
@@ -582,21 +601,22 @@ function ClusterPage() {
                       );
                     }}
                   />
-                  <Scatter data={filteredPoints}>
-                    {filteredPoints.map((point, index) => (
-                      <Cell
-                        key={`cell-${index}`}
-                        fill={
-                          point.isOutlier
-                            ? "#6b7280"
-                            : CLUSTER_COLORS[
-                                point.clusterId % CLUSTER_COLORS.length
-                              ]
-                        }
-                        opacity={point.isOutlier ? 0.4 : 0.7}
-                        r={point.isOutlier ? 3 : 5}
-                      />
-                    ))}
+                  <Scatter data={points}>
+                    {points.map((point, index) => {
+                      const isHighlighted = selectedClusters.size === 0 || selectedClusters.has(point.clusterId);
+                      return (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={
+                            point.isOutlier
+                              ? "#6b7280"
+                              : CLUSTER_COLORS[point.clusterId % CLUSTER_COLORS.length]
+                          }
+                          opacity={point.isOutlier ? 0.3 : isHighlighted ? 0.85 : 0.1}
+                          r={point.isOutlier ? 3 : isHighlighted ? 6 : 4}
+                        />
+                      );
+                    })}
                   </Scatter>
                 </ScatterChart>
               </ResponsiveContainer>
@@ -617,15 +637,11 @@ function ClusterPage() {
               {clusters.map((cluster) => (
                 <button
                   key={cluster.id}
-                  onClick={() =>
-                    setSelectedCluster(
-                      selectedCluster === cluster.id ? null : cluster.id,
-                    )
-                  }
+                  onClick={() => toggleCluster(cluster.id)}
                   className={`
                     card p-4 text-left transition-all duration-200
                     ${
-                      selectedCluster === cluster.id
+                      selectedClusters.has(cluster.id)
                         ? "ring-2 ring-nexus-500 shadow-md"
                         : "hover:shadow-md"
                     }

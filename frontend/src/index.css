@@ -2,22 +2,46 @@
 @tailwind components;
 @tailwind utilities;
 
-/* PwCブランドカラー（デフォルトパレット） */
+/* ============================================
+   デフォルトパレット（PwC Orange）
+   ============================================ */
 :root {
-  --color-nexus-50: #fff7ed;
-  --color-nexus-100: #ffedd5;
-  --color-nexus-200: #fed7aa;
-  --color-nexus-300: #fdba74;
-  --color-nexus-400: #fb923c;
+  --color-nexus-50: #FEF3ED;
+  --color-nexus-100: #FDE2D0;
+  --color-nexus-200: #F9BFA0;
+  --color-nexus-300: #F29A6A;
+  --color-nexus-400: #E86B28;
   --color-nexus-500: #D04A02;
   --color-nexus-600: #B53D02;
   --color-nexus-700: #9A3412;
   --color-nexus-800: #7C2D12;
   --color-nexus-900: #6C2710;
   --color-nexus-950: #431407;
+
+  /* セマンティックカラー */
+  --color-success: #2D8659;
+  --color-success-light: #52A577;
+  --color-warning: #C69B1F;
+  --color-warning-light: #E1B84F;
+  --color-danger: #B02A2A;
+  --color-danger-light: #D14545;
+
+  /* グレースケール */
+  --color-grey-900: #212529;
+  --color-grey-800: #343A40;
+  --color-grey-700: #495057;
+  --color-grey-600: #6C757D;
+  --color-grey-500: #ADB5BD;
+  --color-grey-400: #CED4DA;
+  --color-grey-300: #DEE2E6;
+  --color-grey-200: #E9ECEF;
+  --color-grey-100: #F1F3F5;
+  --color-grey-50: #F8F9FA;
 }
 
-/* Indigoパレット */
+/* ============================================
+   Indigo パレット
+   ============================================ */
 :root[data-palette="indigo"] {
   --color-nexus-50: #eef2ff;
   --color-nexus-100: #e0e7ff;
@@ -32,7 +56,77 @@
   --color-nexus-950: #1e1b4b;
 }
 
-/* グローバルスタイル */
+/* ============================================
+   Teal パレット
+   ============================================ */
+:root[data-palette="teal"] {
+  --color-nexus-50: #f0fdfa;
+  --color-nexus-100: #ccfbf1;
+  --color-nexus-200: #99f6e4;
+  --color-nexus-300: #5eead4;
+  --color-nexus-400: #2dd4bf;
+  --color-nexus-500: #14b8a6;
+  --color-nexus-600: #0d9488;
+  --color-nexus-700: #0f766e;
+  --color-nexus-800: #115e59;
+  --color-nexus-900: #134e4a;
+  --color-nexus-950: #042f2e;
+}
+
+/* ============================================
+   Emerald パレット
+   ============================================ */
+:root[data-palette="emerald"] {
+  --color-nexus-50: #ecfdf5;
+  --color-nexus-100: #d1fae5;
+  --color-nexus-200: #a7f3d0;
+  --color-nexus-300: #6ee7b7;
+  --color-nexus-400: #34d399;
+  --color-nexus-500: #10b981;
+  --color-nexus-600: #059669;
+  --color-nexus-700: #047857;
+  --color-nexus-800: #065f46;
+  --color-nexus-900: #064e3b;
+  --color-nexus-950: #022c22;
+}
+
+/* ============================================
+   Slate パレット
+   ============================================ */
+:root[data-palette="slate"] {
+  --color-nexus-50: #f8fafc;
+  --color-nexus-100: #f1f5f9;
+  --color-nexus-200: #e2e8f0;
+  --color-nexus-300: #cbd5e1;
+  --color-nexus-400: #94a3b8;
+  --color-nexus-500: #64748b;
+  --color-nexus-600: #475569;
+  --color-nexus-700: #334155;
+  --color-nexus-800: #1e293b;
+  --color-nexus-900: #0f172a;
+  --color-nexus-950: #020617;
+}
+
+/* ============================================
+   Purple パレット
+   ============================================ */
+:root[data-palette="purple"] {
+  --color-nexus-50: #faf5ff;
+  --color-nexus-100: #f3e8ff;
+  --color-nexus-200: #e9d5ff;
+  --color-nexus-300: #d8b4fe;
+  --color-nexus-400: #c084fc;
+  --color-nexus-500: #a855f7;
+  --color-nexus-600: #9333ea;
+  --color-nexus-700: #7e22ce;
+  --color-nexus-800: #6b21a8;
+  --color-nexus-900: #581c87;
+  --color-nexus-950: #3b0764;
+}
+
+/* ============================================
+   グローバルスタイル
+   ============================================ */
 @layer base {
   html {
     @apply scroll-smooth;
@@ -42,7 +136,6 @@
     @apply antialiased;
   }
 
-  /* スクロールバーのカスタマイズ */
   ::-webkit-scrollbar {
     @apply w-2 h-2;
   }
@@ -61,17 +154,14 @@
 }
 
 @layer components {
-  /* カードコンポーネント */
   .card {
     @apply bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm;
   }
 
-  /* KPIカード */
   .kpi-card {
     @apply card p-6 flex flex-col gap-2;
   }
 
-  /* ボタンスタイル */
   .btn-primary {
     @apply inline-flex items-center justify-center gap-2 px-4 py-2 rounded-lg
            bg-nexus-600 hover:bg-nexus-700 text-white font-medium
@@ -92,7 +182,6 @@
            transition-colors duration-200;
   }
 
-  /* 入力フィールド */
   .input-field {
     @apply w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700
            bg-white dark:bg-gray-900
@@ -102,7 +191,6 @@
            transition-colors duration-200;
   }
 
-  /* バッジ */
   .badge {
     @apply inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium;
   }
@@ -117,6 +205,10 @@
 
   .badge-neutral {
     @apply badge bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-400;
+  }
+
+  .badge-warning {
+    @apply badge bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400;
   }
 }
 
